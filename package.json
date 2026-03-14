@@ -1,0 +1,13 @@
+{
+  "name": "richup-live-tracker",
+  "version": "1.0.0",
+  "description": "Live inflation tracker and property value charts for Richup Magnate",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.0",
+    "ws": "^8.18.0"
+  }
+}

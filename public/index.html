@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Richup Live Tracker</title>
+<style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+        background: #0d1117;
+        color: #e6edf3;
+        font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+        min-height: 100vh;
+    }
+    .header {
+        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+        padding: 20px 30px;
+        border-bottom: 2px solid #e67e22;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .header h1 {
+        font-size: 22px;
+        font-weight: 700;
+        color: #e67e22;
+    }
+    .header .status {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 13px;
+        color: #7f8c8d;
+    }
+    .status-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: #e74c3c;
+        transition: background 0.3s;
+    }
+    .status-dot.connected { background: #2ecc71; }
+    .tabs {
+        display: flex;
+        background: #161b22;
+        border-bottom: 1px solid #30363d;
+    }
+    .tab {
+        padding: 14px 28px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 600;
+        color: #7f8c8d;
+        border-bottom: 3px solid transparent;
+        transition: all 0.2s;
+    }
+    .tab:hover { color: #e6edf3; }
+    .tab.active {
+        color: #e67e22;
+        border-bottom-color: #e67e22;
+    }
+    .content {
+        max-width: 900px;
+        margin: 0 auto;
+        padding: 24px;
+    }
+    .panel { display: none; }
+    .panel.active { display: block; }
+
+    /* Inflation Stats */
+    .stats-row {
+        display: flex;
+        gap: 16px;
+        margin-bottom: 20px;
+    }
+    .stat-card {
+        flex: 1;
+        background: #161b22;
+        border: 1px solid #30363d;
+        border-radius: 10px;
+        padding: 16px;
+        text-align: center;
+    }
+    .stat-label { font-size: 11px; color: #7f8c8d; text-transform: uppercase; letter-spacing: 1px; }
+    .stat-value { font-size: 26px; font-weight: 700; margin-top: 6px; }
+    .stat-value.up { color: #2ecc71; }
+    .stat-value.down { color: #e74c3c; }
+    .stat-value.neutral { color: #e67e22; }
+
+    /* Filters */
+    .filters {
+        display: flex;
+        gap: 6px;
+        margin-bottom: 16px;
+    }
+    .filter-btn {
+        padding: 8px 16px;
+        background: #21262d;
+        border: 1px solid #30363d;
+        border-radius: 6px;
+        color: #7f8c8d;
+        cursor: pointer;
+        font-size: 13px;
+        font-weight: 600;
+        transition: all 0.15s;
+    }
+    .filter-btn:hover { border-color: #e67e22; color: #e6edf3; }
+    .filter-btn.active { background: #e67e22; color: #fff; border-color: #e67e22; }
+
+    /* Chart container */
+    .chart-container {
+        background: #0a0a0a;
+        border: 1px solid #30363d;
+        border-radius: 10px;
+        padding: 16px;
+        margin-bottom: 16px;
+    }
+    canvas { width: 100%; border-radius: 6px; }
+
+    /* Game info bar */
+    .game-info {
+        display: flex;
+        justify-content: space-between;
+        font-size: 12px;
+        color: #484f58;
+        padding: 8px 0;
+    }
+
+    /* Price charts legend */
+    .legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-bottom: 12px;
+        font-size: 12px;
+    }
+    .legend-item {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+    }
+    .legend-color {
+        width: 14px;
+        height: 3px;
+        border-radius: 2px;
+    }
+
+    .empty-state {
+        text-align: center;
+        padding: 60px 20px;
+        color: #484f58;
+        font-size: 14px;
+    }
+    .empty-state .icon { font-size: 48px; margin-bottom: 16px; opacity: 0.3; }
+</style>
+</head>
+<body>
+    <div class="header">
+        <h1>RICHUP LIVE TRACKER</h1>
+        <div class="status">
+            <div class="status-dot" id="statusDot"></div>
+            <span id="statusText">Connecting...</span>
+            <span style="margin-left:12px;">Turn: <strong id="turnCount">0</strong></span>
+            <span style="margin-left:12px;">Players: <strong id="playerCount">0</strong></span>
+        </div>
+    </div>
+
+    <div class="tabs">
+        <div class="tab active" data-tab="inflation">Inflation Tracker</div>
+        <div class="tab" data-tab="prices">Property Values</div>
+    </div>
+
+    <div class="content">
+        <!-- INFLATION TAB -->
+        <div class="panel active" id="panel-inflation">
+            <div class="stats-row">
+                <div class="stat-card">
+                    <div class="stat-label">Lobby Net Worth</div>
+                    <div class="stat-value neutral" id="inf-current">$0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Change ($)</div>
+                    <div class="stat-value neutral" id="inf-change">$0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Change (%)</div>
+                    <div class="stat-value neutral" id="inf-pct">0.0%</div>
+                </div>
+            </div>
+            <div class="filters" id="inf-filters">
+                <button class="filter-btn active" data-turns="0">ALL</button>
+                <button class="filter-btn" data-turns="5">5</button>
+                <button class="filter-btn" data-turns="10">10</button>
+                <button class="filter-btn" data-turns="20">20</button>
+                <button class="filter-btn" data-turns="50">50</button>
+                <button class="filter-btn" data-turns="100">100</button>
+            </div>
+            <div class="chart-container">
+                <canvas id="inflationCanvas" width="850" height="380"></canvas>
+            </div>
+            <div class="empty-state" id="inf-empty" style="display:none;">
+                <div class="icon">&#x1F4C8;</div>
+                Waiting for game data...<br>Inflation data will appear once the game starts and turns are completed.
+            </div>
+            <div class="game-info">
+                <span>1 turn = all players complete one round</span>
+                <span id="inf-lastUpdate">Last update: --</span>
+            </div>
+        </div>
+
+        <!-- PRICE CHARTS TAB -->
+        <div class="panel" id="panel-prices">
+            <div class="legend" id="price-legend"></div>
+            <div class="chart-container">
+                <canvas id="priceCanvas" width="850" height="380"></canvas>
+            </div>
+            <div class="empty-state" id="price-empty" style="display:none;">
+                <div class="icon">&#x1F3E0;</div>
+                Waiting for property data...<br>Property value history will appear as the game progresses.
+            </div>
+            <div class="game-info">
+                <span>Sell price = (base x multiplier) + 16% lobby tax</span>
+                <span id="price-lastUpdate">Last update: --</span>
+            </div>
+        </div>
+    </div>
+
+<script>
+// ============================================================
+// STATE
+// ============================================================
+let state = {
+    inflationHistory: [],
+    priceHistory: {},
+    propertyNames: {},
+    gameTurn: 0,
+    playerCount: 0,
+    connected: false,
+    filterTurns: 0
+};
+
+// ============================================================
+// WEBSOCKET
+// ============================================================
+let ws = null;
+let reconnectTimer = null;
+
+function connect() {
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    ws = new WebSocket(`${proto}//${location.host}/view`);
+
+    ws.onopen = () => {
+        state.connected = true;
+        document.getElementById('statusDot').classList.add('connected');
+        document.getElementById('statusText').textContent = 'Connected';
+        if (reconnectTimer) { clearInterval(reconnectTimer); reconnectTimer = null; }
+    };
+
+    ws.onclose = () => {
+        state.connected = false;
+        document.getElementById('statusDot').classList.remove('connected');
+        document.getElementById('statusText').textContent = 'Reconnecting...';
+        if (!reconnectTimer) reconnectTimer = setInterval(connect, 3000);
+    };
+
+    ws.onmessage = (e) => {
+        try {
+            const msg = JSON.parse(e.data);
+            handleMessage(msg);
+        } catch (err) {}
+    };
+}
+
+function handleMessage(msg) {
+    if (msg.type === 'fullState') {
+        state.inflationHistory = msg.inflationHistory || [];
+        state.priceHistory = msg.priceHistory || {};
+        state.propertyNames = msg.propertyNames || {};
+        state.gameTurn = msg.gameTurn || 0;
+        state.playerCount = msg.playerCount || 0;
+        renderAll();
+    }
+
+    if (msg.type === 'reset') {
+        state.inflationHistory = [];
+        state.priceHistory = {};
+        state.propertyNames = {};
+        state.gameTurn = 0;
+        renderAll();
+    }
+
+    if (msg.type === 'snapshot') {
+        if (msg.inflation) {
+            state.inflationHistory.push(msg.inflation);
+        }
+        if (msg.prices) {
+            for (const [idx, entry] of Object.entries(msg.prices)) {
+                if (!state.priceHistory[idx]) state.priceHistory[idx] = [];
+                state.priceHistory[idx].push(entry);
+            }
+        }
+        if (msg.propertyNames) {
+            Object.assign(state.propertyNames, msg.propertyNames);
+        }
+        state.gameTurn = msg.gameTurn || state.gameTurn;
+        state.playerCount = msg.playerCount || state.playerCount;
+        renderAll();
+    }
+
+    if (msg.type === 'bankruptcy') {
+        if (msg.inflation) {
+            state.inflationHistory.push(msg.inflation);
+        }
+        renderAll();
+    }
+}
+
+// ============================================================
+// TABS
+// ============================================================
+document.querySelectorAll('.tab').forEach(tab => {
+    tab.onclick = () => {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+        tab.classList.add('active');
+        document.getElementById('panel-' + tab.dataset.tab).classList.add('active');
+        renderAll();
+    };
+});
+
+// ============================================================
+// FILTERS
+// ============================================================
+document.querySelectorAll('#inf-filters .filter-btn').forEach(btn => {
+    btn.onclick = () => {
+        document.querySelectorAll('#inf-filters .filter-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        state.filterTurns = parseInt(btn.dataset.turns);
+        renderAll();
+    };
+});
+
+// ============================================================
+// RENDER ALL
+// ============================================================
+function renderAll() {
+    document.getElementById('turnCount').textContent = state.gameTurn;
+    document.getElementById('playerCount').textContent = state.playerCount;
+    const now = new Date().toLocaleTimeString();
+    document.getElementById('inf-lastUpdate').textContent = 'Last update: ' + now;
+    document.getElementById('price-lastUpdate').textContent = 'Last update: ' + now;
+
+    renderInflationChart();
+    renderPriceChart();
+}
+
+// ============================================================
+// INFLATION CHART
+// ============================================================
+const CHART_COLORS_LIST = [
+    '#e67e22', '#2ecc71', '#3498db', '#e74c3c', '#9b59b6',
+    '#1abc9c', '#f39c12', '#e91e63'
+];
+
+function renderInflationChart() {
+    const canvas = document.getElementById('inflationCanvas');
+    const emptyEl = document.getElementById('inf-empty');
+    const currentEl = document.getElementById('inf-current');
+    const changeEl = document.getElementById('inf-change');
+    const pctEl = document.getElementById('inf-pct');
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width;
+    const H = canvas.height;
+
+    let data = state.inflationHistory.slice();
+    if (state.filterTurns > 0 && data.length > 0) {
+        const maxTurn = data[data.length - 1].turn;
+        data = data.filter(d => d.turn >= maxTurn - state.filterTurns);
+    }
+
+    if (data.length < 2) {
+        canvas.style.display = 'none';
+        emptyEl.style.display = '';
+        if (data.length === 1) {
+            currentEl.textContent = '$' + data[0].netWorth.toLocaleString();
+            currentEl.className = 'stat-value neutral';
+        }
+        changeEl.textContent = '$0';
+        changeEl.className = 'stat-value neutral';
+        pctEl.textContent = '0.0%';
+        pctEl.className = 'stat-value neutral';
+        return;
+    }
+    canvas.style.display = '';
+    emptyEl.style.display = 'none';
+
+    const first = data[0];
+    const last = data[data.length - 1];
+    const dollarChange = last.netWorth - first.netWorth;
+    const pctChange = first.netWorth !== 0 ? ((last.netWorth - first.netWorth) / first.netWorth * 100) : 0;
+    const isUp = dollarChange >= 0;
+
+    currentEl.textContent = '$' + last.netWorth.toLocaleString();
+    currentEl.className = 'stat-value neutral';
+
+    const sign = dollarChange >= 0 ? '+' : '';
+    changeEl.textContent = sign + '$' + dollarChange.toLocaleString();
+    changeEl.className = 'stat-value ' + (isUp ? 'up' : 'down');
+
+    pctEl.textContent = sign + pctChange.toFixed(1) + '%';
+    pctEl.className = 'stat-value ' + (isUp ? 'up' : 'down');
+
+    // Chart rendering
+    const tMin = data[0].turn;
+    const tMax = data[data.length - 1].turn;
+    let vMin = Infinity, vMax = -Infinity;
+    data.forEach(d => {
+        if (d.netWorth < vMin) vMin = d.netWorth;
+        if (d.netWorth > vMax) vMax = d.netWorth;
+    });
+    const vRange = vMax - vMin || 1;
+    vMin = Math.max(0, vMin - vRange * 0.1);
+    vMax = vMax + vRange * 0.1;
+    const tRange = tMax - tMin || 1;
+
+    const mLeft = 70, mRight = 20, mTop = 20, mBottom = 40;
+    const cW = W - mLeft - mRight;
+    const cH = H - mTop - mBottom;
+
+    ctx.fillStyle = '#0a0a0a';
+    ctx.fillRect(0, 0, W, H);
+
+    // Grid
+    ctx.strokeStyle = '#1a1a2e';
+    ctx.lineWidth = 1;
+    for (let i = 0; i <= 6; i++) {
+        const y = mTop + (cH * i / 6);
+        ctx.beginPath(); ctx.moveTo(mLeft, y); ctx.lineTo(W - mRight, y); ctx.stroke();
+        const val = vMax - ((vMax - vMin) * i / 6);
+        ctx.fillStyle = '#484f58';
+        ctx.font = '11px system-ui';
+        ctx.textAlign = 'right';
+        ctx.fillText('$' + Math.round(val).toLocaleString(), mLeft - 8, y + 4);
+    }
+    const numX = Math.min(tMax - tMin, 10) || 5;
+    for (let i = 0; i <= numX; i++) {
+        const x = mLeft + (cW * i / numX);
+        ctx.beginPath(); ctx.moveTo(x, mTop); ctx.lineTo(x, mTop + cH); ctx.stroke();
+        const t = Math.round(tMin + (tRange * i / numX));
+        ctx.fillStyle = '#484f58';
+        ctx.font = '11px system-ui';
+        ctx.textAlign = 'center';
+        ctx.fillText('T' + t, x, H - mBottom + 18);
+    }
+    ctx.fillStyle = '#30363d';
+    ctx.font = '10px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('game turns', mLeft + cW / 2, H - 4);
+
+    // Area fill
+    const lineColor = isUp ? '#2ecc71' : '#e74c3c';
+    ctx.beginPath();
+    data.forEach((d, i) => {
+        const x = mLeft + ((d.turn - tMin) / tRange) * cW;
+        const y = mTop + ((vMax - d.netWorth) / (vMax - vMin)) * cH;
+        i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    });
+    const lastX = mLeft + ((data[data.length - 1].turn - tMin) / tRange) * cW;
+    const firstX = mLeft + ((data[0].turn - tMin) / tRange) * cW;
+    ctx.lineTo(lastX, mTop + cH);
+    ctx.lineTo(firstX, mTop + cH);
+    ctx.closePath();
+    ctx.fillStyle = isUp ? 'rgba(46, 204, 113, 0.12)' : 'rgba(231, 76, 60, 0.12)';
+    ctx.fill();
+
+    // Line
+    ctx.strokeStyle = lineColor;
+    ctx.lineWidth = 2.5;
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    data.forEach((d, i) => {
+        const x = mLeft + ((d.turn - tMin) / tRange) * cW;
+        const y = mTop + ((vMax - d.netWorth) / (vMax - vMin)) * cH;
+        i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+
+    // End dot + label
+    const lx = mLeft + ((last.turn - tMin) / tRange) * cW;
+    const ly = mTop + ((vMax - last.netWorth) / (vMax - vMin)) * cH;
+    ctx.fillStyle = lineColor;
+    ctx.beginPath(); ctx.arc(lx, ly, 5, 0, Math.PI * 2); ctx.fill();
+    ctx.font = 'bold 12px system-ui';
+    ctx.textAlign = 'left';
+    ctx.fillText('$' + last.netWorth.toLocaleString(), Math.min(lx + 8, W - mRight - 70), ly - 8);
+
+    // Border
+    ctx.strokeStyle = '#21262d';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(mLeft, mTop, cW, cH);
+}
+
+// ============================================================
+// PRICE CHART
+// ============================================================
+const PRICE_COLORS = {
+    brazil: '#D2691E', israel: '#00BFFF', italy: '#FF4444',
+    germany: '#FFD700', china: '#00FF7F', france: '#FF69B4',
+    uk: '#4DA6FF', usa: '#DA70D6'
+};
+const FALLBACK_COLORS = ['#FF6B6B','#4ECDC4','#45B7D1','#96CEB4','#FFEAA7','#DDA0DD','#98D8C8','#F7DC6F'];
+
+function renderPriceChart() {
+    const canvas = document.getElementById('priceCanvas');
+    const legendEl = document.getElementById('price-legend');
+    const emptyEl = document.getElementById('price-empty');
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width;
+    const H = canvas.height;
+
+    const series = [];
+    let colorIdx = 0;
+    for (const [idx, data] of Object.entries(state.priceHistory)) {
+        if (data.length < 2) continue;
+        const meta = state.propertyNames[idx] || {};
+        const countryId = (meta.countryId || '').toLowerCase();
+        const color = PRICE_COLORS[countryId] || FALLBACK_COLORS[colorIdx++ % FALLBACK_COLORS.length];
+        series.push({
+            idx,
+            name: meta.name || '#' + idx,
+            color,
+            data
+        });
+    }
+
+    if (series.length === 0) {
+        canvas.style.display = 'none';
+        emptyEl.style.display = '';
+        legendEl.innerHTML = '';
+        return;
+    }
+    canvas.style.display = '';
+    emptyEl.style.display = 'none';
+
+    // Legend
+    legendEl.innerHTML = series.map(s =>
+        `<div class="legend-item"><div class="legend-color" style="background:${s.color}"></div><span style="color:${s.color}">${s.name}</span></div>`
+    ).join('');
+
+    // Ranges
+    let tMin = 0, tMax = state.gameTurn, pMin = Infinity, pMax = -Infinity;
+    series.forEach(s => s.data.forEach(d => {
+        if (d.turn > tMax) tMax = d.turn;
+        if (d.p < pMin) pMin = d.p;
+        if (d.p > pMax) pMax = d.p;
+    }));
+    const pRange = pMax - pMin || 1;
+    pMin = Math.max(0, pMin - pRange * 0.1);
+    pMax = pMax + pRange * 0.1;
+    const tRange = tMax - tMin || 1;
+
+    const mLeft = 70, mRight = 20, mTop = 20, mBottom = 40;
+    const cW = W - mLeft - mRight;
+    const cH = H - mTop - mBottom;
+
+    ctx.fillStyle = '#0a0a0a';
+    ctx.fillRect(0, 0, W, H);
+
+    // Grid
+    ctx.strokeStyle = '#1a1a2e';
+    ctx.lineWidth = 1;
+    for (let i = 0; i <= 6; i++) {
+        const y = mTop + (cH * i / 6);
+        ctx.beginPath(); ctx.moveTo(mLeft, y); ctx.lineTo(W - mRight, y); ctx.stroke();
+        const price = pMax - ((pMax - pMin) * i / 6);
+        ctx.fillStyle = '#484f58';
+        ctx.font = '11px system-ui';
+        ctx.textAlign = 'right';
+        ctx.fillText('$' + Math.round(price).toLocaleString(), mLeft - 8, y + 4);
+    }
+    const numX = Math.min(tMax - tMin, 10) || 5;
+    for (let i = 0; i <= numX; i++) {
+        const x = mLeft + (cW * i / numX);
+        ctx.beginPath(); ctx.moveTo(x, mTop); ctx.lineTo(x, mTop + cH); ctx.stroke();
+        const t = Math.round(tMin + (tRange * i / numX));
+        ctx.fillStyle = '#484f58';
+        ctx.font = '11px system-ui';
+        ctx.textAlign = 'center';
+        ctx.fillText('T' + t, x, H - mBottom + 18);
+    }
+    ctx.fillStyle = '#30363d';
+    ctx.font = '10px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('game turns', mLeft + cW / 2, H - 4);
+
+    // Draw series
+    series.forEach(s => {
+        ctx.strokeStyle = s.color;
+        ctx.lineWidth = 2;
+        ctx.lineJoin = 'round';
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        let first = true;
+        s.data.forEach(d => {
+            const x = mLeft + ((d.turn - tMin) / tRange) * cW;
+            const y = mTop + ((pMax - d.p) / (pMax - pMin)) * cH;
+            first ? (ctx.moveTo(x, y), first = false) : ctx.lineTo(x, y);
+        });
+        ctx.stroke();
+
+        const last = s.data[s.data.length - 1];
+        const lx = mLeft + ((last.turn - tMin) / tRange) * cW;
+        const ly = mTop + ((pMax - last.p) / (pMax - pMin)) * cH;
+        ctx.fillStyle = s.color;
+        ctx.beginPath(); ctx.arc(lx, ly, 3.5, 0, Math.PI * 2); ctx.fill();
+        ctx.font = 'bold 10px system-ui';
+        ctx.textAlign = 'left';
+        ctx.fillText('$' + last.p, Math.min(lx + 6, W - mRight - 50), ly - 6);
+    });
+
+    ctx.strokeStyle = '#21262d';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(mLeft, mTop, cW, cH);
+}
+
+// ============================================================
+// INIT
+// ============================================================
+connect();
+</script>
+</body>
+</html>

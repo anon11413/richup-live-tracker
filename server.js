@@ -53,18 +53,28 @@ wss.on('connection', (ws, req) => {
                 }
 
                 if (msg.type === 'snapshot') {
-                    // Inflation snapshot
+                    // Inflation snapshot — update existing turn or add new
                     if (msg.inflation) {
-                        gameState.inflationHistory.push(msg.inflation);
+                        const hist = gameState.inflationHistory;
+                        if (hist.length > 0 && hist[hist.length - 1].turn === msg.inflation.turn) {
+                            hist[hist.length - 1].netWorth = msg.inflation.netWorth;
+                        } else {
+                            hist.push(msg.inflation);
+                        }
                         gameState.lobbyNet = msg.inflation.netWorth;
                     }
-                    // Price snapshots
+                    // Price snapshots — update existing turn or add new
                     if (msg.prices) {
                         for (const [idx, entry] of Object.entries(msg.prices)) {
                             if (!gameState.priceHistory[idx]) {
                                 gameState.priceHistory[idx] = [];
                             }
-                            gameState.priceHistory[idx].push(entry);
+                            const ph = gameState.priceHistory[idx];
+                            if (ph.length > 0 && ph[ph.length - 1].turn === entry.turn) {
+                                ph[ph.length - 1].p = entry.p;
+                            } else {
+                                ph.push(entry);
+                            }
                         }
                     }
                     // Property metadata

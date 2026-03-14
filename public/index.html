@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Richup Live Tracker</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -152,6 +153,15 @@
         font-size: 14px;
     }
     .empty-state .icon { font-size: 48px; margin-bottom: 16px; opacity: 0.3; }
+
+    /* Charts tab grid */
+    #charts-grid {
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+    }
+    @media (max-width: 600px) {
+        #charts-grid { grid-template-columns: 1fr; }
+    }
 </style>
 </head>
 <body>
@@ -168,6 +178,7 @@
     <div class="tabs">
         <div class="tab active" data-tab="inflation">Inflation Tracker</div>
         <div class="tab" data-tab="prices">Property Values</div>
+        <div class="tab" data-tab="charts">Live Charts</div>
     </div>
 
     <div class="content">
@@ -223,6 +234,19 @@
                 <span id="price-lastUpdate">Last update: --</span>
             </div>
         </div>
+
+        <!-- CHARTS TAB (V19.0) -->
+        <div class="panel" id="panel-charts">
+            <div id="charts-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;"></div>
+            <div class="empty-state" id="charts-empty">
+                <div class="icon">&#x1F4CA;</div>
+                Waiting for chart data...<br>Charts will appear once the V19.0 injection script sends player history data.
+            </div>
+            <div class="game-info">
+                <span>Data from game state — all active players</span>
+                <span id="charts-lastUpdate">Last update: --</span>
+            </div>
+        </div>
     </div>
 
 <script>
@@ -233,11 +257,14 @@ let state = {
     inflationHistory: [],
     priceHistory: {},
     propertyNames: {},
+    chartPlayers: null,
     gameTurn: 0,
     playerCount: 0,
     connected: false,
     filterTurns: 0
 };
+const chartInstances = {};
+const PLAYER_COLORS = ['#38bdf8','#4ade80','#c084fc','#f472b6','#fbbf24','#f87171'];
 
 // Insert or update entry by turn, maintaining sorted order
 function upsertByTurn(arr, entry) {
@@ -289,6 +316,7 @@ function handleMessage(msg) {
         state.inflationHistory = msg.inflationHistory || [];
         state.priceHistory = msg.priceHistory || {};
         state.propertyNames = msg.propertyNames || {};
+        if (msg.chartPlayers) state.chartPlayers = msg.chartPlayers;
         state.gameTurn = msg.gameTurn || 0;
         state.playerCount = msg.playerCount || 0;
         renderAll();
@@ -303,6 +331,7 @@ function handleMessage(msg) {
     }
 
     if (msg.type === 'snapshot') {
+        if (msg.chartPlayers) state.chartPlayers = msg.chartPlayers;
         if (msg.inflation) {
             upsertByTurn(state.inflationHistory, msg.inflation);
         }
@@ -365,6 +394,7 @@ function renderAll() {
 
     renderInflationChart();
     renderPriceChart();
+    renderChartsTab();
 }
 
 // ============================================================
@@ -635,6 +665,154 @@ function renderPriceChart() {
     ctx.strokeStyle = '#21262d';
     ctx.lineWidth = 1;
     ctx.strokeRect(mLeft, mTop, cW, cH);
+}
+
+// ============================================================
+// CHARTS TAB (V19.0)
+// ============================================================
+const CHART_CONFIGS = [
+    { id: 'ct-networth', label: 'Net Worth', dataKey: 'net_worth_history', agg: 'perPlayer' },
+    { id: 'ct-cash', label: 'Cash', dataKey: 'cash_history', agg: 'perPlayer' },
+    { id: 'ct-spending', label: 'Spending (Cumul.)', dataKey: 'spending_history', agg: 'perPlayer' },
+    { id: 'ct-earnings', label: 'Earnings (Cumul.)', dataKey: 'earnings_history', agg: 'perPlayer' },
+    { id: 'ct-rent', label: 'Rent Potential', dataKey: 'rent_history', agg: 'perPlayer' },
+    { id: 'ct-roll', label: 'Avg Roll', dataKey: 'roll_history', agg: 'perPlayer' },
+    { id: 'ct-propval', label: 'Property Value', dataKey: 'property_value_history', agg: 'perPlayer' },
+    { id: 'ct-avg-cash-ma', label: 'Avg Cash (10T MA)', dataKey: 'avg_cash_ma', agg: 'aggregate' },
+    { id: 'ct-spending-ma', label: 'Spending Rate (10T MA)', dataKey: 'spending_ma', agg: 'perPlayer' },
+    { id: 'ct-earnings-ma', label: 'Earnings Rate (10T MA)', dataKey: 'earnings_ma', agg: 'perPlayer' },
+    { id: 'ct-bank-flow', label: 'Cash Flow', dataKey: 'bank_flow', agg: 'aggregate' },
+    { id: 'ct-net-flow', label: 'Net Cash Flow', dataKey: 'net_flow', agg: 'perPlayer' },
+    { id: 'ct-earn-spend', label: 'Earn-Spend Diff', dataKey: 'earn_spend_diff', agg: 'perPlayer' },
+    { id: 'ct-inflation', label: 'Spending % of Start', dataKey: 'inflation', agg: 'perPlayer' }
+];
+
+function calcMA(data, w) {
+    if (!data || !data.length) return [];
+    const r = [];
+    for (let i = 0; i < data.length; i++) {
+        const s = Math.max(0, i - (w || 10) + 1);
+        const sl = data.slice(s, i + 1);
+        r.push(Math.round(sl.reduce((a, b) => a + b, 0) / sl.length));
+    }
+    return r;
+}
+
+function getDerived(player, dataKey) {
+    switch (dataKey) {
+        case 'avg_cash_ma': return calcMA(player.cash_history);
+        case 'spending_ma': return calcMA(player.spending_history);
+        case 'earnings_ma': return calcMA(player.earnings_history);
+        case 'bank_flow':
+            if (player.earnings_history && player.spending_history)
+                return player.earnings_history.map((e, i) => e - (player.spending_history[i] || 0));
+            return [];
+        case 'net_flow':
+        case 'earn_spend_diff':
+            if (player.earnings_history && player.spending_history)
+                return player.earnings_history.map((e, i) => e - (player.spending_history[i] || 0));
+            return [];
+        case 'inflation':
+            if (player.spending_history && player.spending_history.length > 0)
+                return player.spending_history.map(s => Math.round((s / 1500) * 100));
+            return [];
+        default: return player[dataKey] || [];
+    }
+}
+
+function renderChartsTab() {
+    const grid = document.getElementById('charts-grid');
+    const emptyEl = document.getElementById('charts-empty');
+    if (!grid) return;
+
+    if (!state.chartPlayers || state.chartPlayers.length === 0 || !state.chartPlayers[0].cash_history) {
+        grid.style.display = 'none';
+        emptyEl.style.display = '';
+        return;
+    }
+    grid.style.display = 'grid';
+    emptyEl.style.display = 'none';
+
+    const players = state.chartPlayers.filter(p => !p.is_bankrupt);
+    if (players.length === 0) return;
+
+    // Build canvases if not present
+    if (!grid.querySelector('canvas')) {
+        grid.innerHTML = CHART_CONFIGS.map(c =>
+            `<div style="background:#161b22;border:1px solid #30363d;border-radius:8px;padding:10px;">
+                <div style="font-size:12px;color:#7f8c8d;margin-bottom:6px;font-weight:600;">${c.label}</div>
+                <div style="height:200px;"><canvas id="${c.id}"></canvas></div>
+            </div>`
+        ).join('');
+    }
+
+    CHART_CONFIGS.forEach(config => {
+        const canvas = document.getElementById(config.id);
+        if (!canvas) return;
+        if (chartInstances[config.id]) {
+            chartInstances[config.id].destroy();
+            delete chartInstances[config.id];
+        }
+
+        let maxLen = 0;
+        players.forEach(p => {
+            const d = getDerived(p, config.dataKey);
+            if (d.length > maxLen) maxLen = d.length;
+        });
+        if (maxLen === 0) return;
+
+        const labels = Array.from({ length: maxLen }, (_, i) => `T${i + 1}`);
+        let datasets;
+
+        if (config.agg === 'aggregate') {
+            const avgData = [];
+            for (let t = 0; t < maxLen; t++) {
+                let sum = 0, count = 0;
+                players.forEach(p => {
+                    const d = getDerived(p, config.dataKey);
+                    if (t < d.length) { sum += d[t]; count++; }
+                });
+                avgData.push(count > 0 ? Math.round(sum / count) : 0);
+            }
+            datasets = [{
+                label: config.label,
+                data: avgData,
+                borderColor: '#e67e22',
+                backgroundColor: 'rgba(230,126,34,0.1)',
+                borderWidth: 2, tension: 0.3, pointRadius: 0, fill: true
+            }];
+        } else {
+            datasets = players.map((p, i) => ({
+                label: p.username || `Player ${i + 1}`,
+                data: getDerived(p, config.dataKey),
+                borderColor: PLAYER_COLORS[i % PLAYER_COLORS.length],
+                backgroundColor: PLAYER_COLORS[i % PLAYER_COLORS.length] + '20',
+                borderWidth: 2, tension: 0.3, pointRadius: 0, fill: false
+            }));
+        }
+
+        chartInstances[config.id] = new Chart(canvas.getContext('2d'), {
+            type: 'line',
+            data: { labels, datasets },
+            options: {
+                responsive: true, maintainAspectRatio: false, animation: false,
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: {
+                        display: config.agg !== 'aggregate',
+                        position: 'top',
+                        labels: { color: '#c9d1d9', font: { size: 10 } }
+                    }
+                },
+                scales: {
+                    x: { grid: { color: 'rgba(148,163,184,0.1)' }, ticks: { color: '#94a3b8', maxTicksLimit: 12 } },
+                    y: { grid: { color: 'rgba(148,163,184,0.1)' }, ticks: { color: '#94a3b8' } }
+                }
+            }
+        });
+    });
+
+    document.getElementById('charts-lastUpdate').textContent = 'Last update: ' + new Date().toLocaleTimeString();
 }
 
 // ============================================================

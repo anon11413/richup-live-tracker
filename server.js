@@ -41,6 +41,7 @@ let gameState = {
     gameTurn: 0,
     lobbyNet: 0,
     playerCount: 0,
+    chartPlayers: null,       // V19.0: player history arrays for charts
     lastUpdate: null
 };
 
@@ -67,6 +68,7 @@ wss.on('connection', (ws, req) => {
                         gameTurn: 0,
                         lobbyNet: 0,
                         playerCount: 0,
+                        chartPlayers: null,
                         lastUpdate: Date.now()
                     };
                     broadcast({ type: 'reset' });
@@ -93,6 +95,7 @@ wss.on('connection', (ws, req) => {
                     }
                     gameState.gameTurn = msg.gameTurn || gameState.gameTurn;
                     gameState.playerCount = msg.playerCount || gameState.playerCount;
+                    if (msg.chartPlayers) gameState.chartPlayers = msg.chartPlayers;
                     gameState.lastUpdate = Date.now();
 
                     // Send full state to all viewers
@@ -124,6 +127,7 @@ wss.on('connection', (ws, req) => {
                     }
                     gameState.gameTurn = msg.gameTurn || gameState.gameTurn;
                     gameState.playerCount = msg.playerCount || gameState.playerCount;
+                    if (msg.chartPlayers) gameState.chartPlayers = msg.chartPlayers;
                     gameState.lastUpdate = Date.now();
 
                     // Broadcast to all viewers
@@ -133,7 +137,8 @@ wss.on('connection', (ws, req) => {
                         prices: msg.prices,
                         propertyNames: msg.propertyNames,
                         gameTurn: gameState.gameTurn,
-                        playerCount: gameState.playerCount
+                        playerCount: gameState.playerCount,
+                        chartPlayers: msg.chartPlayers
                     });
                 }
 

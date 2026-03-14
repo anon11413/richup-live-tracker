@@ -9,6 +9,27 @@ const wss = new WebSocketServer({ server });
 
 const PORT = process.env.PORT || 3000;
 
+// Sort array by .turn, keep last entry per turn (dedup)
+function dedupeByTurn(arr) {
+    const map = new Map();
+    arr.forEach(entry => map.set(entry.turn, entry));
+    return Array.from(map.values()).sort((a, b) => a.turn - b.turn);
+}
+
+// Insert or update an entry by turn, maintaining sorted order
+function upsertByTurn(arr, entry) {
+    const existingIdx = arr.findIndex(e => e.turn === entry.turn);
+    if (existingIdx >= 0) {
+        arr[existingIdx] = entry;
+    } else {
+        arr.push(entry);
+        // Re-sort only if out of order
+        if (arr.length >= 2 && arr[arr.length - 2].turn > entry.turn) {
+            arr.sort((a, b) => a.turn - b.turn);
+        }
+    }
+}
+
 // Serve static frontend
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -52,29 +73,49 @@ wss.on('connection', (ws, req) => {
                     console.log('[BOT] Game reset');
                 }
 
-                if (msg.type === 'snapshot') {
-                    // Inflation snapshot — update existing turn or add new
-                    if (msg.inflation) {
-                        const hist = gameState.inflationHistory;
-                        if (hist.length > 0 && hist[hist.length - 1].turn === msg.inflation.turn) {
-                            hist[hist.length - 1].netWorth = msg.inflation.netWorth;
-                        } else {
-                            hist.push(msg.inflation);
+                if (msg.type === 'fullHistory') {
+                    // Bulk history dump from mid-game injection
+                    if (msg.inflationHistory && Array.isArray(msg.inflationHistory)) {
+                        gameState.inflationHistory = dedupeByTurn(msg.inflationHistory);
+                        if (gameState.inflationHistory.length > 0) {
+                            gameState.lobbyNet = gameState.inflationHistory[gameState.inflationHistory.length - 1].netWorth;
                         }
+                    }
+                    if (msg.priceHistory) {
+                        for (const [idx, entries] of Object.entries(msg.priceHistory)) {
+                            if (Array.isArray(entries)) {
+                                gameState.priceHistory[idx] = dedupeByTurn(entries);
+                            }
+                        }
+                    }
+                    if (msg.propertyNames) {
+                        Object.assign(gameState.propertyNames, msg.propertyNames);
+                    }
+                    gameState.gameTurn = msg.gameTurn || gameState.gameTurn;
+                    gameState.playerCount = msg.playerCount || gameState.playerCount;
+                    gameState.lastUpdate = Date.now();
+
+                    // Send full state to all viewers
+                    broadcast({
+                        type: 'fullState',
+                        ...gameState
+                    });
+                    console.log('[BOT] Full history received — ' + gameState.inflationHistory.length + ' inflation entries');
+                }
+
+                if (msg.type === 'snapshot') {
+                    // Inflation snapshot — upsert by turn
+                    if (msg.inflation) {
+                        upsertByTurn(gameState.inflationHistory, msg.inflation);
                         gameState.lobbyNet = msg.inflation.netWorth;
                     }
-                    // Price snapshots — update existing turn or add new
+                    // Price snapshots — upsert by turn
                     if (msg.prices) {
                         for (const [idx, entry] of Object.entries(msg.prices)) {
                             if (!gameState.priceHistory[idx]) {
                                 gameState.priceHistory[idx] = [];
                             }
-                            const ph = gameState.priceHistory[idx];
-                            if (ph.length > 0 && ph[ph.length - 1].turn === entry.turn) {
-                                ph[ph.length - 1].p = entry.p;
-                            } else {
-                                ph.push(entry);
-                            }
+                            upsertByTurn(gameState.priceHistory[idx], entry);
                         }
                     }
                     // Property metadata

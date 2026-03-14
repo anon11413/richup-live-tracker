@@ -239,6 +239,19 @@ let state = {
     filterTurns: 0
 };
 
+// Insert or update entry by turn, maintaining sorted order
+function upsertByTurn(arr, entry) {
+    const existingIdx = arr.findIndex(e => e.turn === entry.turn);
+    if (existingIdx >= 0) {
+        arr[existingIdx] = entry;
+    } else {
+        arr.push(entry);
+        if (arr.length >= 2 && arr[arr.length - 2].turn > entry.turn) {
+            arr.sort((a, b) => a.turn - b.turn);
+        }
+    }
+}
+
 // ============================================================
 // WEBSOCKET
 // ============================================================
@@ -291,12 +304,12 @@ function handleMessage(msg) {
 
     if (msg.type === 'snapshot') {
         if (msg.inflation) {
-            state.inflationHistory.push(msg.inflation);
+            upsertByTurn(state.inflationHistory, msg.inflation);
         }
         if (msg.prices) {
             for (const [idx, entry] of Object.entries(msg.prices)) {
                 if (!state.priceHistory[idx]) state.priceHistory[idx] = [];
-                state.priceHistory[idx].push(entry);
+                upsertByTurn(state.priceHistory[idx], entry);
             }
         }
         if (msg.propertyNames) {
@@ -309,7 +322,7 @@ function handleMessage(msg) {
 
     if (msg.type === 'bankruptcy') {
         if (msg.inflation) {
-            state.inflationHistory.push(msg.inflation);
+            upsertByTurn(state.inflationHistory, msg.inflation);
         }
         renderAll();
     }

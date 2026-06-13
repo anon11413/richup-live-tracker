@@ -61,7 +61,7 @@
         border-bottom-color: #e67e22;
     }
     .content {
-        max-width: 900px;
+        max-width: 1200px;
         margin: 0 auto;
         padding: 24px;
     }
@@ -127,25 +127,6 @@
         padding: 8px 0;
     }
 
-    /* Price charts legend */
-    .legend {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 10px;
-        margin-bottom: 12px;
-        font-size: 12px;
-    }
-    .legend-item {
-        display: flex;
-        align-items: center;
-        gap: 5px;
-    }
-    .legend-color {
-        width: 14px;
-        height: 3px;
-        border-radius: 2px;
-    }
-
     .empty-state {
         text-align: center;
         padding: 60px 20px;
@@ -154,13 +135,34 @@
     }
     .empty-state .icon { font-size: 48px; margin-bottom: 16px; opacity: 0.3; }
 
-    /* Charts tab grid */
-    #charts-grid {
-        grid-template-columns: 1fr 1fr;
-        gap: 12px;
+    /* Per-player grid */
+    .player-col { display: flex; flex-direction: column; gap: 6px; }
+    .player-col .player-name {
+        font-size: 11px; font-weight: 700; text-align: center;
+        padding: 4px; border-radius: 4px; color: #e6edf3;
     }
-    @media (max-width: 600px) {
-        #charts-grid { grid-template-columns: 1fr; }
+    .player-col .mini-chart {
+        background: #0a0a0a; border: 1px solid #21262d; border-radius: 6px;
+        padding: 3px;
+    }
+    .player-col .mini-chart .mini-label {
+        font-size: 8px; color: #484f58; text-align: center; margin-bottom: 2px;
+    }
+
+    /* Combined & donut chart cards */
+    .chart-card {
+        background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 12px;
+    }
+    .chart-card .card-title {
+        font-size: 12px; color: #7f8c8d; margin-bottom: 6px; font-weight: 600;
+    }
+    .section-title {
+        font-size: 16px; font-weight: 700; color: #e67e22; margin: 24px 0 12px 0;
+        padding-bottom: 6px; border-bottom: 1px solid #30363d;
+    }
+
+    @media (max-width: 800px) {
+        .content { max-width: 100%; padding: 12px; }
     }
 </style>
 </head>
@@ -177,12 +179,11 @@
 
     <div class="tabs">
         <div class="tab active" data-tab="inflation">Inflation Tracker</div>
-        <div class="tab" data-tab="prices">Property Values</div>
-        <div class="tab" data-tab="charts">Live Charts</div>
+        <div class="tab" data-tab="stats">Live Stats</div>
     </div>
 
     <div class="content">
-        <!-- INFLATION TAB -->
+        <!-- INFLATION TAB (unchanged) -->
         <div class="panel active" id="panel-inflation">
             <div class="stats-row">
                 <div class="stat-card">
@@ -219,32 +220,36 @@
             </div>
         </div>
 
-        <!-- PRICE CHARTS TAB -->
-        <div class="panel" id="panel-prices">
-            <div class="legend" id="price-legend"></div>
-            <div class="chart-container">
-                <canvas id="priceCanvas" width="850" height="380"></canvas>
+        <!-- LIVE STATS TAB (V21) -->
+        <div class="panel" id="panel-stats">
+            <!-- Turn filter bar -->
+            <div class="filters" id="stats-filters">
+                <button class="filter-btn active" data-turns="0">ALL</button>
+                <button class="filter-btn" data-turns="5">5</button>
+                <button class="filter-btn" data-turns="10">10</button>
+                <button class="filter-btn" data-turns="20">20</button>
+                <button class="filter-btn" data-turns="50">50</button>
+                <button class="filter-btn" data-turns="100">100</button>
             </div>
-            <div class="empty-state" id="price-empty" style="display:none;">
-                <div class="icon">&#x1F3E0;</div>
-                Waiting for property data...<br>Property value history will appear as the game progresses.
-            </div>
-            <div class="game-info">
-                <span>Sell price = (base x multiplier) + 16% lobby tax</span>
-                <span id="price-lastUpdate">Last update: --</span>
-            </div>
-        </div>
 
-        <!-- CHARTS TAB (V19.0) -->
-        <div class="panel" id="panel-charts">
-            <div id="charts-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;"></div>
-            <div class="empty-state" id="charts-empty">
+            <!-- Per-player mini charts -->
+            <div id="stats-perplayer" style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;"></div>
+
+            <!-- Combined totals -->
+            <div class="section-title">Combined Totals</div>
+            <div id="stats-combined" style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;"></div>
+
+            <!-- Donut charts -->
+            <div class="section-title">Latest Turn Share</div>
+            <div id="stats-donuts" style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;"></div>
+
+            <div class="empty-state" id="stats-empty">
                 <div class="icon">&#x1F4CA;</div>
-                Waiting for chart data...<br>Charts will appear once the V19.0 injection script sends player history data.
+                Waiting for per-player data...<br>Charts will appear once the V21 bot sends player history data.
             </div>
             <div class="game-info">
-                <span>Data from game state — all active players</span>
-                <span id="charts-lastUpdate">Last update: --</span>
+                <span>Each player: cash + property value (price/2) + housing value (house/hotel/2)</span>
+                <span id="stats-lastUpdate">Last update: --</span>
             </div>
         </div>
     </div>
@@ -326,6 +331,7 @@ function handleMessage(msg) {
         state.inflationHistory = [];
         state.priceHistory = {};
         state.propertyNames = {};
+        state.chartPlayers = null;
         state.gameTurn = 0;
         renderAll();
     }
@@ -381,6 +387,14 @@ document.querySelectorAll('#inf-filters .filter-btn').forEach(btn => {
         renderAll();
     };
 });
+document.querySelectorAll('#stats-filters .filter-btn').forEach(btn => {
+    btn.onclick = () => {
+        document.querySelectorAll('#stats-filters .filter-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        state.filterTurns = parseInt(btn.dataset.turns);
+        renderAll();
+    };
+});
 
 // ============================================================
 // RENDER ALL
@@ -390,21 +404,15 @@ function renderAll() {
     document.getElementById('playerCount').textContent = state.playerCount;
     const now = new Date().toLocaleTimeString();
     document.getElementById('inf-lastUpdate').textContent = 'Last update: ' + now;
-    document.getElementById('price-lastUpdate').textContent = 'Last update: ' + now;
+    document.getElementById('stats-lastUpdate').textContent = 'Last update: ' + now;
 
     renderInflationChart();
-    renderPriceChart();
-    renderChartsTab();
+    renderLiveStats();
 }
 
 // ============================================================
-// INFLATION CHART
+// INFLATION CHART (unchanged)
 // ============================================================
-const CHART_COLORS_LIST = [
-    '#e67e22', '#2ecc71', '#3498db', '#e74c3c', '#9b59b6',
-    '#1abc9c', '#f39c12', '#e91e63'
-];
-
 function renderInflationChart() {
     const canvas = document.getElementById('inflationCanvas');
     const emptyEl = document.getElementById('inf-empty');
@@ -453,7 +461,6 @@ function renderInflationChart() {
     pctEl.textContent = sign + pctChange.toFixed(1) + '%';
     pctEl.className = 'stat-value ' + (isUp ? 'up' : 'down');
 
-    // Chart rendering
     const tMin = data[0].turn;
     const tMax = data[data.length - 1].turn;
     let vMin = Infinity, vMax = -Infinity;
@@ -473,7 +480,6 @@ function renderInflationChart() {
     ctx.fillStyle = '#0a0a0a';
     ctx.fillRect(0, 0, W, H);
 
-    // Grid
     ctx.strokeStyle = '#1a1a2e';
     ctx.lineWidth = 1;
     for (let i = 0; i <= 6; i++) {
@@ -500,7 +506,6 @@ function renderInflationChart() {
     ctx.textAlign = 'center';
     ctx.fillText('game turns', mLeft + cW / 2, H - 4);
 
-    // Area fill
     const lineColor = isUp ? '#2ecc71' : '#e74c3c';
     ctx.beginPath();
     data.forEach((d, i) => {
@@ -516,7 +521,6 @@ function renderInflationChart() {
     ctx.fillStyle = isUp ? 'rgba(46, 204, 113, 0.12)' : 'rgba(231, 76, 60, 0.12)';
     ctx.fill();
 
-    // Line
     ctx.strokeStyle = lineColor;
     ctx.lineWidth = 2.5;
     ctx.lineJoin = 'round';
@@ -529,7 +533,6 @@ function renderInflationChart() {
     });
     ctx.stroke();
 
-    // End dot + label
     const lx = mLeft + ((last.turn - tMin) / tRange) * cW;
     const ly = mTop + ((vMax - last.netWorth) / (vMax - vMin)) * cH;
     ctx.fillStyle = lineColor;
@@ -538,281 +541,227 @@ function renderInflationChart() {
     ctx.textAlign = 'left';
     ctx.fillText('$' + last.netWorth.toLocaleString(), Math.min(lx + 8, W - mRight - 70), ly - 8);
 
-    // Border
     ctx.strokeStyle = '#21262d';
     ctx.lineWidth = 1;
     ctx.strokeRect(mLeft, mTop, cW, cH);
 }
 
 // ============================================================
-// PRICE CHART
+// LIVE STATS TAB (V21)
 // ============================================================
-const PRICE_COLORS = {
-    brazil: '#D2691E', israel: '#00BFFF', italy: '#FF4444',
-    germany: '#FFD700', china: '#00FF7F', france: '#FF69B4',
-    uk: '#4DA6FF', usa: '#DA70D6'
-};
-const FALLBACK_COLORS = ['#FF6B6B','#4ECDC4','#45B7D1','#96CEB4','#FFEAA7','#DDA0DD','#98D8C8','#F7DC6F'];
+function sliceDataByFilter(data) {
+    if (!data || data.length === 0) return data;
+    if (state.filterTurns <= 0) return data;
+    return data.slice(Math.max(0, data.length - state.filterTurns));
+}
 
-function renderPriceChart() {
-    const canvas = document.getElementById('priceCanvas');
-    const legendEl = document.getElementById('price-legend');
-    const emptyEl = document.getElementById('price-empty');
-    const ctx = canvas.getContext('2d');
-    const W = canvas.width;
-    const H = canvas.height;
+function renderLiveStats() {
+    const emptyEl = document.getElementById('stats-empty');
+    const perPlayerEl = document.getElementById('stats-perplayer');
+    const combinedEl = document.getElementById('stats-combined');
+    const donutEl = document.getElementById('stats-donuts');
+    if (!perPlayerEl) return;
 
-    const series = [];
-    let colorIdx = 0;
-    for (const [idx, data] of Object.entries(state.priceHistory)) {
-        if (data.length < 2) continue;
-        const meta = state.propertyNames[idx] || {};
-        const countryId = (meta.countryId || '').toLowerCase();
-        const color = PRICE_COLORS[countryId] || FALLBACK_COLORS[colorIdx++ % FALLBACK_COLORS.length];
-        series.push({
-            idx,
-            name: meta.name || '#' + idx,
-            color,
-            data
-        });
-    }
-
-    if (series.length === 0) {
-        canvas.style.display = 'none';
+    const players = state.chartPlayers ? state.chartPlayers.filter(p => !p.is_bankrupt) : [];
+    if (players.length === 0 || !players[0].cash_history) {
+        perPlayerEl.innerHTML = '';
+        combinedEl.innerHTML = '';
+        donutEl.innerHTML = '';
         emptyEl.style.display = '';
-        legendEl.innerHTML = '';
         return;
     }
-    canvas.style.display = '';
     emptyEl.style.display = 'none';
 
-    // Legend
-    legendEl.innerHTML = series.map(s =>
-        `<div class="legend-item"><div class="legend-color" style="background:${s.color}"></div><span style="color:${s.color}">${s.name}</span></div>`
-    ).join('');
+    const maxLen = Math.max(...players.map(p => Math.max(
+        (p.cash_history || []).length,
+        (p.property_value_history || []).length,
+        (p.housing_value_history || []).length,
+        (p.combined_total_history || []).length
+    )));
+    if (maxLen === 0) return;
 
-    // Ranges
-    let tMin = 0, tMax = state.gameTurn, pMin = Infinity, pMax = -Infinity;
-    series.forEach(s => s.data.forEach(d => {
-        if (d.turn > tMax) tMax = d.turn;
-        if (d.p < pMin) pMin = d.p;
-        if (d.p > pMax) pMax = d.p;
-    }));
-    const pRange = pMax - pMin || 1;
-    pMin = Math.max(0, pMin - pRange * 0.1);
-    pMax = pMax + pRange * 0.1;
-    const tRange = tMax - tMin || 1;
+    const allLabels = Array.from({ length: maxLen }, (_, i) => `T${i + 1}`);
 
-    const mLeft = 70, mRight = 20, mTop = 20, mBottom = 40;
-    const cW = W - mLeft - mRight;
-    const cH = H - mTop - mBottom;
+    // ---------- PER-PLAYER MINI CHARTS ----------
+    // Build 4-column grid: columns = players, rows = 4 chart types
+    let ppHtml = '';
+    players.forEach((p, pi) => {
+        const color = PLAYER_COLORS[pi % PLAYER_COLORS.length];
+        ppHtml += `<div class="player-col">
+            <div class="player-name" style="background:${color}22;border:1px solid ${color};">${p.username}</div>`;
 
-    ctx.fillStyle = '#0a0a0a';
-    ctx.fillRect(0, 0, W, H);
+        const chartDefs = [
+            { label: 'Cash', data: sliceDataByFilter(p.cash_history), key: 'pp-cash-' + pi },
+            { label: 'Property', data: sliceDataByFilter(p.property_value_history), key: 'pp-prop-' + pi },
+            { label: 'Housing', data: sliceDataByFilter(p.housing_value_history), key: 'pp-house-' + pi },
+            { label: 'Combined', data: sliceDataByFilter(p.combined_total_history), key: 'pp-combo-' + pi }
+        ];
 
-    // Grid
-    ctx.strokeStyle = '#1a1a2e';
-    ctx.lineWidth = 1;
-    for (let i = 0; i <= 6; i++) {
-        const y = mTop + (cH * i / 6);
-        ctx.beginPath(); ctx.moveTo(mLeft, y); ctx.lineTo(W - mRight, y); ctx.stroke();
-        const price = pMax - ((pMax - pMin) * i / 6);
-        ctx.fillStyle = '#484f58';
-        ctx.font = '11px system-ui';
-        ctx.textAlign = 'right';
-        ctx.fillText('$' + Math.round(price).toLocaleString(), mLeft - 8, y + 4);
-    }
-    const numX = Math.min(tMax - tMin, 10) || 5;
-    for (let i = 0; i <= numX; i++) {
-        const x = mLeft + (cW * i / numX);
-        ctx.beginPath(); ctx.moveTo(x, mTop); ctx.lineTo(x, mTop + cH); ctx.stroke();
-        const t = Math.round(tMin + (tRange * i / numX));
-        ctx.fillStyle = '#484f58';
-        ctx.font = '11px system-ui';
-        ctx.textAlign = 'center';
-        ctx.fillText('T' + t, x, H - mBottom + 18);
-    }
-    ctx.fillStyle = '#30363d';
-    ctx.font = '10px system-ui';
-    ctx.textAlign = 'center';
-    ctx.fillText('game turns', mLeft + cW / 2, H - 4);
-
-    // Draw series
-    series.forEach(s => {
-        ctx.strokeStyle = s.color;
-        ctx.lineWidth = 2;
-        ctx.lineJoin = 'round';
-        ctx.lineCap = 'round';
-        ctx.beginPath();
-        let first = true;
-        s.data.forEach(d => {
-            const x = mLeft + ((d.turn - tMin) / tRange) * cW;
-            const y = mTop + ((pMax - d.p) / (pMax - pMin)) * cH;
-            first ? (ctx.moveTo(x, y), first = false) : ctx.lineTo(x, y);
+        chartDefs.forEach(def => {
+            ppHtml += `<div class="mini-chart">
+                <div class="mini-label">${def.label}</div>
+                <div style="height:60px;"><canvas id="${def.key}"></canvas></div>
+            </div>`;
         });
-        ctx.stroke();
+        ppHtml += `</div>`;
+    });
+    perPlayerEl.innerHTML = ppHtml;
 
-        const last = s.data[s.data.length - 1];
-        const lx = mLeft + ((last.turn - tMin) / tRange) * cW;
-        const ly = mTop + ((pMax - last.p) / (pMax - pMin)) * cH;
-        ctx.fillStyle = s.color;
-        ctx.beginPath(); ctx.arc(lx, ly, 3.5, 0, Math.PI * 2); ctx.fill();
-        ctx.font = 'bold 10px system-ui';
-        ctx.textAlign = 'left';
-        ctx.fillText('$' + last.p, Math.min(lx + 6, W - mRight - 50), ly - 6);
+    // Destroy old per-player chart instances (those starting with 'pp-')
+    Object.keys(chartInstances).forEach(k => {
+        if (k.startsWith('pp-')) {
+            chartInstances[k].destroy();
+            delete chartInstances[k];
+        }
     });
 
-    ctx.strokeStyle = '#21262d';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(mLeft, mTop, cW, cH);
-}
-
-// ============================================================
-// CHARTS TAB (V19.0)
-// ============================================================
-const CHART_CONFIGS = [
-    { id: 'ct-networth', label: 'Net Worth', dataKey: 'net_worth_history', agg: 'perPlayer' },
-    { id: 'ct-cash', label: 'Cash', dataKey: 'cash_history', agg: 'perPlayer' },
-    { id: 'ct-spending', label: 'Spending (Cumul.)', dataKey: 'spending_history', agg: 'perPlayer' },
-    { id: 'ct-earnings', label: 'Earnings (Cumul.)', dataKey: 'earnings_history', agg: 'perPlayer' },
-    { id: 'ct-rent', label: 'Rent Potential', dataKey: 'rent_history', agg: 'perPlayer' },
-    { id: 'ct-roll', label: 'Avg Roll', dataKey: 'roll_history', agg: 'perPlayer' },
-    { id: 'ct-propval', label: 'Property Value', dataKey: 'property_value_history', agg: 'perPlayer' },
-    { id: 'ct-avg-cash-ma', label: 'Avg Cash (10T MA)', dataKey: 'avg_cash_ma', agg: 'aggregate' },
-    { id: 'ct-spending-ma', label: 'Spending Rate (10T MA)', dataKey: 'spending_ma', agg: 'perPlayer' },
-    { id: 'ct-earnings-ma', label: 'Earnings Rate (10T MA)', dataKey: 'earnings_ma', agg: 'perPlayer' },
-    { id: 'ct-bank-flow', label: 'Cash Flow', dataKey: 'bank_flow', agg: 'aggregate' },
-    { id: 'ct-net-flow', label: 'Net Cash Flow', dataKey: 'net_flow', agg: 'perPlayer' },
-    { id: 'ct-earn-spend', label: 'Earn-Spend Diff', dataKey: 'earn_spend_diff', agg: 'perPlayer' },
-    { id: 'ct-inflation', label: 'Spending % of Start', dataKey: 'inflation', agg: 'perPlayer' }
-];
-
-function calcMA(data, w) {
-    if (!data || !data.length) return [];
-    const r = [];
-    for (let i = 0; i < data.length; i++) {
-        const s = Math.max(0, i - (w || 10) + 1);
-        const sl = data.slice(s, i + 1);
-        r.push(Math.round(sl.reduce((a, b) => a + b, 0) / sl.length));
-    }
-    return r;
-}
-
-function getDerived(player, dataKey) {
-    switch (dataKey) {
-        case 'avg_cash_ma': return calcMA(player.cash_history);
-        case 'spending_ma': return calcMA(player.spending_history);
-        case 'earnings_ma': return calcMA(player.earnings_history);
-        case 'bank_flow':
-            if (player.earnings_history && player.spending_history)
-                return player.earnings_history.map((e, i) => e - (player.spending_history[i] || 0));
-            return [];
-        case 'net_flow':
-        case 'earn_spend_diff':
-            if (player.earnings_history && player.spending_history)
-                return player.earnings_history.map((e, i) => e - (player.spending_history[i] || 0));
-            return [];
-        case 'inflation':
-            if (player.spending_history && player.spending_history.length > 0)
-                return player.spending_history.map(s => Math.round((s / 1500) * 100));
-            return [];
-        default: return player[dataKey] || [];
-    }
-}
-
-function renderChartsTab() {
-    const grid = document.getElementById('charts-grid');
-    const emptyEl = document.getElementById('charts-empty');
-    if (!grid) return;
-
-    if (!state.chartPlayers || state.chartPlayers.length === 0 || !state.chartPlayers[0].cash_history) {
-        grid.style.display = 'none';
-        emptyEl.style.display = '';
-        return;
-    }
-    grid.style.display = 'grid';
-    emptyEl.style.display = 'none';
-
-    const players = state.chartPlayers.filter(p => !p.is_bankrupt);
-    if (players.length === 0) return;
-
-    // Build canvases if not present
-    if (!grid.querySelector('canvas')) {
-        grid.innerHTML = CHART_CONFIGS.map(c =>
-            `<div style="background:#161b22;border:1px solid #30363d;border-radius:8px;padding:10px;">
-                <div style="font-size:12px;color:#7f8c8d;margin-bottom:6px;font-weight:600;">${c.label}</div>
-                <div style="height:200px;"><canvas id="${c.id}"></canvas></div>
-            </div>`
-        ).join('');
-    }
-
-    CHART_CONFIGS.forEach(config => {
-        const canvas = document.getElementById(config.id);
-        if (!canvas) return;
-        if (chartInstances[config.id]) {
-            chartInstances[config.id].destroy();
-            delete chartInstances[config.id];
-        }
-
-        let maxLen = 0;
-        players.forEach(p => {
-            const d = getDerived(p, config.dataKey);
-            if (d.length > maxLen) maxLen = d.length;
+    // Render each per-player mini chart
+    players.forEach((p, pi) => {
+        const charts = [
+            { data: sliceDataByFilter(p.cash_history), key: 'pp-cash-' + pi },
+            { data: sliceDataByFilter(p.property_value_history), key: 'pp-prop-' + pi },
+            { data: sliceDataByFilter(p.housing_value_history), key: 'pp-house-' + pi },
+            { data: sliceDataByFilter(p.combined_total_history), key: 'pp-combo-' + pi }
+        ];
+        charts.forEach(c => {
+            const canvas = document.getElementById(c.key);
+            if (!canvas || !c.data || c.data.length === 0) return;
+            if (chartInstances[c.key]) { chartInstances[c.key].destroy(); delete chartInstances[c.key]; }
+            chartInstances[c.key] = new Chart(canvas.getContext('2d'), {
+                type: 'line',
+                data: {
+                    labels: allLabels.slice(-c.data.length),
+                    datasets: [{
+                        data: c.data,
+                        borderColor: PLAYER_COLORS[pi % PLAYER_COLORS.length],
+                        backgroundColor: PLAYER_COLORS[pi % PLAYER_COLORS.length] + '20',
+                        borderWidth: 1.5, tension: 0.2, pointRadius: 0, fill: true
+                    }]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false, animation: false,
+                    plugins: { legend: { display: false }, tooltip: { enabled: true } },
+                    scales: {
+                        x: { display: false },
+                        y: { display: false }
+                    }
+                }
+            });
         });
-        if (maxLen === 0) return;
+    });
 
-        const labels = Array.from({ length: maxLen }, (_, i) => `T${i + 1}`);
-        let datasets;
+    // ---------- COMBINED TOTALS ----------
+    const slicedPlayers = players.map(p => ({
+        username: p.username,
+        cash: sliceDataByFilter(p.cash_history),
+        property: sliceDataByFilter(p.property_value_history),
+        housing: sliceDataByFilter(p.housing_value_history)
+    }));
 
-        if (config.agg === 'aggregate') {
-            const avgData = [];
-            for (let t = 0; t < maxLen; t++) {
-                let sum = 0, count = 0;
-                players.forEach(p => {
-                    const d = getDerived(p, config.dataKey);
-                    if (t < d.length) { sum += d[t]; count++; }
-                });
-                avgData.push(count > 0 ? Math.round(sum / count) : 0);
-            }
-            datasets = [{
-                label: config.label,
-                data: avgData,
-                borderColor: '#e67e22',
-                backgroundColor: 'rgba(230,126,34,0.1)',
-                borderWidth: 2, tension: 0.3, pointRadius: 0, fill: true
-            }];
-        } else {
-            datasets = players.map((p, i) => ({
-                label: p.username || `Player ${i + 1}`,
-                data: getDerived(p, config.dataKey),
-                borderColor: PLAYER_COLORS[i % PLAYER_COLORS.length],
-                backgroundColor: PLAYER_COLORS[i % PLAYER_COLORS.length] + '20',
-                borderWidth: 2, tension: 0.3, pointRadius: 0, fill: false
-            }));
+    const combinedCharts = [
+        { id: 'ct-comb-cash', label: 'Total Cash', dataKey: 'cash' },
+        { id: 'ct-comb-prop', label: 'Total Property Value', dataKey: 'property' },
+        { id: 'ct-comb-house', label: 'Total Housing Value', dataKey: 'housing' }
+    ];
+
+    combinedEl.innerHTML = combinedCharts.map(c =>
+        `<div class="chart-card"><div class="card-title">${c.label}</div><div style="height:160px;"><canvas id="${c.id}"></canvas></div></div>`
+    ).join('');
+
+    // Destroy old combined chart instances
+    combinedCharts.forEach(c => {
+        if (chartInstances[c.id]) { chartInstances[c.id].destroy(); delete chartInstances[c.id]; }
+    });
+
+    const maxCLen = Math.max(...slicedPlayers.map(p => Math.max(p.cash.length, p.property.length, p.housing.length)));
+
+    combinedCharts.forEach(c => {
+        const canvas = document.getElementById(c.id);
+        if (!canvas) return;
+        const combinedData = [];
+        for (let t = 0; t < maxCLen; t++) {
+            let sum = 0;
+            slicedPlayers.forEach(p => { if (t < p[c.dataKey].length) sum += p[c.dataKey][t]; });
+            combinedData.push(sum);
         }
+        if (combinedData.length === 0) return;
 
-        chartInstances[config.id] = new Chart(canvas.getContext('2d'), {
+        chartInstances[c.id] = new Chart(canvas.getContext('2d'), {
             type: 'line',
-            data: { labels, datasets },
+            data: {
+                labels: allLabels.slice(-combinedData.length),
+                datasets: [{
+                    label: c.label,
+                    data: combinedData,
+                    borderColor: '#e67e22',
+                    backgroundColor: 'rgba(230,126,34,0.1)',
+                    borderWidth: 2, tension: 0.3, pointRadius: 0, fill: true
+                }]
+            },
             options: {
                 responsive: true, maintainAspectRatio: false, animation: false,
-                interaction: { mode: 'index', intersect: false },
-                plugins: {
-                    legend: {
-                        display: config.agg !== 'aggregate',
-                        position: 'top',
-                        labels: { color: '#c9d1d9', font: { size: 10 } }
-                    }
-                },
+                plugins: { legend: { display: false } },
                 scales: {
-                    x: { grid: { color: 'rgba(148,163,184,0.1)' }, ticks: { color: '#94a3b8', maxTicksLimit: 12 } },
-                    y: { grid: { color: 'rgba(148,163,184,0.1)' }, ticks: { color: '#94a3b8' } }
+                    x: { grid: { color: 'rgba(148,163,184,0.1)' }, ticks: { color: '#94a3b8', maxTicksLimit: 8, font: { size: 9 } } },
+                    y: { grid: { color: 'rgba(148,163,184,0.1)' }, ticks: { color: '#94a3b8', font: { size: 9 } } }
                 }
             }
         });
     });
 
-    document.getElementById('charts-lastUpdate').textContent = 'Last update: ' + new Date().toLocaleTimeString();
+    // ---------- DONUT CHARTS ----------
+    const latestVals = {};
+    players.forEach((p, pi) => {
+        const ch = p.cash_history, pv = p.property_value_history, hv = p.housing_value_history;
+        latestVals[p.username] = {
+            cash: ch && ch.length > 0 ? ch[ch.length - 1] : 0,
+            property: pv && pv.length > 0 ? pv[pv.length - 1] : 0,
+            housing: hv && hv.length > 0 ? hv[hv.length - 1] : 0
+        };
+    });
+
+    const donutDefs = [
+        { id: 'donut-cash', label: 'Cash Share', dataKey: 'cash' },
+        { id: 'donut-prop', label: 'Property Value Share', dataKey: 'property' },
+        { id: 'donut-house', label: 'Housing Value Share', dataKey: 'housing' }
+    ];
+
+    donutEl.innerHTML = donutDefs.map(d =>
+        `<div class="chart-card"><div class="card-title">${d.label}</div><div style="height:160px;"><canvas id="${d.id}"></canvas></div></div>`
+    ).join('');
+
+    donutDefs.forEach(d => {
+        if (chartInstances[d.id]) { chartInstances[d.id].destroy(); delete chartInstances[d.id]; }
+    });
+
+    donutDefs.forEach(d => {
+        const canvas = document.getElementById(d.id);
+        if (!canvas) return;
+        const labels = [];
+        const data = [];
+        const colors = [];
+        players.forEach((p, pi) => {
+            const val = latestVals[p.username][d.dataKey];
+            if (val > 0) {
+                labels.push(p.username);
+                data.push(val);
+                colors.push(PLAYER_COLORS[pi % PLAYER_COLORS.length]);
+            }
+        });
+        if (data.length === 0) return;
+
+        chartInstances[d.id] = new Chart(canvas.getContext('2d'), {
+            type: 'doughnut',
+            data: { labels, datasets: [{ data, backgroundColor: colors, borderColor: '#0d1117', borderWidth: 2 }] },
+            options: {
+                responsive: true, maintainAspectRatio: false, animation: false,
+                plugins: {
+                    legend: { position: 'right', labels: { color: '#c9d1d9', font: { size: 9 } } },
+                    tooltip: { callbacks: { label: function(ctx) { return ctx.label + ': $' + ctx.raw.toLocaleString(); } } }
+                }
+            }
+        });
+    });
 }
 
 // ============================================================

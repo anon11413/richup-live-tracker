@@ -237,7 +237,7 @@
 
             <!-- Combined totals -->
             <div class="section-title">Combined Totals</div>
-            <div id="stats-combined" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;"></div>
+            <div id="stats-combined" style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;"></div>
 
             <!-- Donut charts -->
             <div class="section-title">Latest Turn Share</div>
@@ -702,43 +702,70 @@ function renderLiveStats() {
         { id: 'ct-comb-all', label: 'Total All (Cash+Property+Housing)', dataKey: 'all' }
     ];
 
-    combinedEl.innerHTML = combinedCharts.map(c =>
-        `<div class="chart-card"><div class="card-title">${c.label}</div><div style="height:160px;"><canvas id="${c.id}"></canvas></div></div>`
-    ).join('');
+    // Compute combined data arrays first
+    const maxCLen = Math.max(...sliced.map(s => Math.max(s.cash.length, s.property.length, s.housing.length)));
+    const combinedDataMap = {};
+    combinedCharts.forEach(c => {
+        const arr = [];
+        for (let t = 0; t < maxCLen; t++) {
+            let sum = 0;
+            sliced.forEach(s => {
+                if (c.dataKey === 'all') {
+                    sum += (t < s.cash.length ? s.cash[t] : 0) + (t < s.property.length ? s.property[t] : 0) + (t < s.housing.length ? s.housing[t] : 0);
+                } else {
+                    if (t < s[c.dataKey].length) sum += s[c.dataKey][t];
+                }
+            });
+            arr.push(sum);
+        }
+        combinedDataMap[c.id] = arr;
+    });
+
+    combinedEl.innerHTML = combinedCharts.map(c => {
+        const data = combinedDataMap[c.id];
+        const first = data.length > 0 ? data[0] : 0;
+        const last = data.length > 0 ? data[data.length - 1] : 0;
+        const dc = last - first;
+        const pc = first !== 0 ? ((dc / first) * 100) : 0;
+        const sign = dc >= 0 ? '+' : '';
+        const isUp = dc >= 0;
+        return `<div class="chart-card">
+            <div class="card-title">${c.label}</div>
+            <div style="display:flex;gap:4px;margin-bottom:6px;">
+                <div style="flex:1;background:#0d1117;border:1px solid #21262d;border-radius:4px;padding:4px;text-align:center;">
+                    <div style="font-size:8px;color:#7f8c8d;">CURRENT</div>
+                    <div style="font-size:12px;font-weight:700;color:#e67e22;">$${last.toLocaleString()}</div>
+                </div>
+                <div style="flex:1;background:#0d1117;border:1px solid #21262d;border-radius:4px;padding:4px;text-align:center;">
+                    <div style="font-size:8px;color:#7f8c8d;">CHG $</div>
+                    <div style="font-size:12px;font-weight:700;color:${isUp ? '#2ecc71' : '#e74c3c'};">${sign}$${dc.toLocaleString()}</div>
+                </div>
+                <div style="flex:1;background:#0d1117;border:1px solid #21262d;border-radius:4px;padding:4px;text-align:center;">
+                    <div style="font-size:8px;color:#7f8c8d;">CHG %</div>
+                    <div style="font-size:12px;font-weight:700;color:${isUp ? '#2ecc71' : '#e74c3c'};">${sign}${pc.toFixed(1)}%</div>
+                </div>
+            </div>
+            <div style="height:160px;"><canvas id="${c.id}"></canvas></div>
+        </div>`;
+    }).join('');
 
     combinedCharts.forEach(c => {
         if (chartInstances[c.id]) { chartInstances[c.id].destroy(); delete chartInstances[c.id]; }
     });
 
-    const maxCLen = Math.max(...sliced.map(s => Math.max(s.cash.length, s.property.length, s.housing.length)));
-
     combinedCharts.forEach(c => {
         const canvas = document.getElementById(c.id);
         if (!canvas) return;
-        const combinedData = [];
-        for (let t = 0; t < maxCLen; t++) {
-            let sum = 0;
-            sliced.forEach(s => {
-                if (c.dataKey === 'all') {
-                    const cash = t < s.cash.length ? s.cash[t] : 0;
-                    const prop = t < s.property.length ? s.property[t] : 0;
-                    const house = t < s.housing.length ? s.housing[t] : 0;
-                    sum += cash + prop + house;
-                } else {
-                    if (t < s[c.dataKey].length) sum += s[c.dataKey][t];
-                }
-            });
-            combinedData.push(sum);
-        }
-        if (combinedData.length === 0) return;
+        const data = combinedDataMap[c.id];
+        if (data.length === 0) return;
 
         chartInstances[c.id] = new Chart(canvas.getContext('2d'), {
             type: 'line',
             data: {
-                labels: allLabels.slice(-combinedData.length),
+                labels: allLabels.slice(-data.length),
                 datasets: [{
                     label: c.label,
-                    data: combinedData,
+                    data: data,
                     borderColor: '#e67e22',
                     backgroundColor: 'rgba(230,126,34,0.1)',
                     borderWidth: 2, tension: 0.3, pointRadius: 0, fill: true

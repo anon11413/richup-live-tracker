@@ -400,14 +400,18 @@ document.querySelectorAll('#stats-filters .filter-btn').forEach(btn => {
 // RENDER ALL
 // ============================================================
 function renderAll() {
-    document.getElementById('turnCount').textContent = state.gameTurn;
-    document.getElementById('playerCount').textContent = state.playerCount;
-    const now = new Date().toLocaleTimeString();
-    document.getElementById('inf-lastUpdate').textContent = 'Last update: ' + now;
-    document.getElementById('stats-lastUpdate').textContent = 'Last update: ' + now;
+    try {
+        document.getElementById('turnCount').textContent = state.gameTurn;
+        document.getElementById('playerCount').textContent = state.playerCount;
+        const now = new Date().toLocaleTimeString();
+        document.getElementById('inf-lastUpdate').textContent = 'Last update: ' + now;
+        document.getElementById('stats-lastUpdate').textContent = 'Last update: ' + now;
 
-    renderInflationChart();
-    renderLiveStats();
+        renderInflationChart();
+        renderLiveStats();
+    } catch (e) {
+        console.error('renderAll error:', e);
+    }
 }
 
 // ============================================================
@@ -560,7 +564,7 @@ function renderLiveStats() {
     const perPlayerEl = document.getElementById('stats-perplayer');
     const combinedEl = document.getElementById('stats-combined');
     const donutEl = document.getElementById('stats-donuts');
-    if (!perPlayerEl) return;
+    if (!perPlayerEl || !combinedEl || !donutEl) return;
 
     const players = state.chartPlayers ? state.chartPlayers.filter(p => !p.is_bankrupt) : [];
     if (players.length === 0 || !players[0].cash_history) {
@@ -703,7 +707,7 @@ function renderLiveStats() {
     ];
 
     // Compute combined data arrays first
-    const maxCLen = Math.max(...sliced.map(s => Math.max(s.cash.length, s.property.length, s.housing.length)));
+    const maxCLen = Math.max(...sliced.map(s => Math.max((s.cash||[]).length, (s.property||[]).length, (s.housing||[]).length)));
     const combinedDataMap = {};
     combinedCharts.forEach(c => {
         const arr = [];
@@ -711,9 +715,10 @@ function renderLiveStats() {
             let sum = 0;
             sliced.forEach(s => {
                 if (c.dataKey === 'all') {
-                    sum += Math.max(0, t < s.cash.length ? s.cash[t] : 0) + (t < s.property.length ? s.property[t] : 0) + (t < s.housing.length ? s.housing[t] : 0);
+                    sum += Math.max(0, t < (s.cash||[]).length ? s.cash[t] : 0) + (t < (s.property||[]).length ? s.property[t] : 0) + (t < (s.housing||[]).length ? s.housing[t] : 0);
                 } else {
-                    if (t < s[c.dataKey].length) sum += c.dataKey === 'cash' ? Math.max(0, s[c.dataKey][t]) : s[c.dataKey][t];
+                    const col = s[c.dataKey];
+                    if (col && t < col.length) sum += c.dataKey === 'cash' ? Math.max(0, col[t]) : col[t];
                 }
             });
             arr.push(sum);
@@ -722,7 +727,7 @@ function renderLiveStats() {
     });
 
     combinedEl.innerHTML = combinedCharts.map(c => {
-        const data = combinedDataMap[c.id];
+        const data = combinedDataMap[c.id] || [];
         const first = data.length > 0 ? data[0] : 0;
         const last = data.length > 0 ? data[data.length - 1] : 0;
         const dc = last - first;
@@ -756,7 +761,7 @@ function renderLiveStats() {
     combinedCharts.forEach(c => {
         const canvas = document.getElementById(c.id);
         if (!canvas) return;
-        const data = combinedDataMap[c.id];
+        const data = combinedDataMap[c.id] || [];
         if (data.length === 0) return;
 
         chartInstances[c.id] = new Chart(canvas.getContext('2d'), {

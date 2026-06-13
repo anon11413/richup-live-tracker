@@ -711,9 +711,9 @@ function renderLiveStats() {
             let sum = 0;
             sliced.forEach(s => {
                 if (c.dataKey === 'all') {
-                    sum += (t < s.cash.length ? s.cash[t] : 0) + (t < s.property.length ? s.property[t] : 0) + (t < s.housing.length ? s.housing[t] : 0);
+                    sum += Math.max(0, t < s.cash.length ? s.cash[t] : 0) + (t < s.property.length ? s.property[t] : 0) + (t < s.housing.length ? s.housing[t] : 0);
                 } else {
-                    if (t < s[c.dataKey].length) sum += s[c.dataKey][t];
+                    if (t < s[c.dataKey].length) sum += c.dataKey === 'cash' ? Math.max(0, s[c.dataKey][t]) : s[c.dataKey][t];
                 }
             });
             arr.push(sum);

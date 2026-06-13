@@ -566,8 +566,9 @@ function renderLiveStats() {
     const donutEl = document.getElementById('stats-donuts');
     if (!perPlayerEl || !combinedEl || !donutEl) return;
 
-    const players = state.chartPlayers ? state.chartPlayers.filter(p => !p.is_bankrupt) : [];
-    if (players.length === 0 || !players[0].cash_history) {
+    const playersAll = state.chartPlayers || [];
+    const players = playersAll.filter(p => !p.is_bankrupt);
+    if ((players.length === 0 || !players[0].cash_history) && (playersAll.length === 0 || !playersAll[0].cash_history)) {
         perPlayerEl.innerHTML = '';
         combinedEl.innerHTML = '';
         donutEl.innerHTML = '';
@@ -576,7 +577,7 @@ function renderLiveStats() {
     }
     emptyEl.style.display = 'none';
 
-    const maxLen = Math.max(...players.map(p => Math.max(
+    const maxLen = Math.max(...playersAll.map(p => Math.max(
         (p.cash_history || []).length,
         (p.property_value_history || []).length,
         (p.housing_value_history || []).length,
@@ -587,7 +588,7 @@ function renderLiveStats() {
     const allLabels = Array.from({ length: maxLen }, (_, i) => `T${i + 1}`);
 
     // ---------- PER-PLAYER MINI CHARTS ----------
-    // Filtered data per player (sliced by turn filter)
+    // Filtered data per player (sliced by turn filter) — excludes bankrupt
     const sliced = players.map(p => ({
         username: p.username,
         color: PLAYER_COLORS[players.indexOf(p) % PLAYER_COLORS.length],
@@ -595,6 +596,14 @@ function renderLiveStats() {
         property: sliceDataByFilter(p.property_value_history),
         housing: sliceDataByFilter(p.housing_value_history),
         combined: sliceDataByFilter(p.combined_total_history)
+    }));
+
+    // All players including bankrupt — used for combined totals so drops show
+    const slicedAll = playersAll.map(p => ({
+        username: p.username,
+        cash: sliceDataByFilter(p.cash_history),
+        property: sliceDataByFilter(p.property_value_history),
+        housing: sliceDataByFilter(p.housing_value_history)
     }));
 
     // Compute unified Y max per chart type
@@ -708,13 +717,13 @@ function renderLiveStats() {
     ];
 
     // Compute combined data arrays first
-    const maxCLen = Math.max(...sliced.map(s => Math.max((s.cash||[]).length, (s.property||[]).length, (s.housing||[]).length)));
+    const maxCLen = Math.max(...slicedAll.map(s => Math.max((s.cash||[]).length, (s.property||[]).length, (s.housing||[]).length)));
     const combinedDataMap = {};
     combinedCharts.forEach(c => {
         const arr = [];
         for (let t = 0; t < maxCLen; t++) {
             let sum = 0;
-            sliced.forEach(s => {
+            slicedAll.forEach(s => {
                 if (c.dataKey === 'all') {
                     sum += Math.max(0, t < (s.cash||[]).length ? s.cash[t] : 0) + (t < (s.property||[]).length ? s.property[t] : 0) + (t < (s.housing||[]).length ? s.housing[t] : 0);
                 } else {
@@ -790,7 +799,7 @@ function renderLiveStats() {
 
     // ---------- DONUT CHARTS ----------
     const latestVals = {};
-    players.forEach((p, pi) => {
+    playersAll.forEach((p, pi) => {
         const ch = p.cash_history, pv = p.property_value_history, hv = p.housing_value_history;
         latestVals[p.username] = {
             cash: ch && ch.length > 0 ? ch[ch.length - 1] : 0,
@@ -819,7 +828,7 @@ function renderLiveStats() {
         const labels = [];
         const data = [];
         const colors = [];
-        players.forEach((p, pi) => {
+        playersAll.forEach((p, pi) => {
             const val = latestVals[p.username][d.dataKey];
             if (val > 0) {
                 labels.push(p.username);

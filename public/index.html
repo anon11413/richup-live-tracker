@@ -237,7 +237,7 @@
 
             <!-- Combined totals -->
             <div class="section-title">Combined Totals</div>
-            <div id="stats-combined" style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;"></div>
+            <div id="stats-combined" style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;"></div>
 
             <!-- Donut charts -->
             <div class="section-title">Latest Turn Share</div>
@@ -400,18 +400,14 @@ document.querySelectorAll('#stats-filters .filter-btn').forEach(btn => {
 // RENDER ALL
 // ============================================================
 function renderAll() {
-    try {
-        document.getElementById('turnCount').textContent = state.gameTurn;
-        document.getElementById('playerCount').textContent = state.playerCount;
-        const now = new Date().toLocaleTimeString();
-        document.getElementById('inf-lastUpdate').textContent = 'Last update: ' + now;
-        document.getElementById('stats-lastUpdate').textContent = 'Last update: ' + now;
+    document.getElementById('turnCount').textContent = state.gameTurn;
+    document.getElementById('playerCount').textContent = state.playerCount;
+    const now = new Date().toLocaleTimeString();
+    document.getElementById('inf-lastUpdate').textContent = 'Last update: ' + now;
+    document.getElementById('stats-lastUpdate').textContent = 'Last update: ' + now;
 
-        renderInflationChart();
-        renderLiveStats();
-    } catch (e) {
-        console.error('renderAll error:', e);
-    }
+    renderInflationChart();
+    renderLiveStats();
 }
 
 // ============================================================
@@ -564,7 +560,7 @@ function renderLiveStats() {
     const perPlayerEl = document.getElementById('stats-perplayer');
     const combinedEl = document.getElementById('stats-combined');
     const donutEl = document.getElementById('stats-donuts');
-    if (!perPlayerEl || !combinedEl || !donutEl) return;
+    if (!perPlayerEl) return;
 
     const players = state.chartPlayers ? state.chartPlayers.filter(p => !p.is_bankrupt) : [];
     if (players.length === 0 || !players[0].cash_history) {
@@ -586,24 +582,32 @@ function renderLiveStats() {
 
     const allLabels = Array.from({ length: maxLen }, (_, i) => `T${i + 1}`);
 
-    // Filtered data per player (sliced by turn filter)
-    const sliced = players.map(p => ({
-        username: p.username,
-        color: PLAYER_COLORS[players.indexOf(p) % PLAYER_COLORS.length],
-        cash: sliceDataByFilter(p.cash_history),
-        property: sliceDataByFilter(p.property_value_history),
-        housing: sliceDataByFilter(p.housing_value_history),
-        combined: sliceDataByFilter(p.combined_total_history)
-    }));
+    // ---------- PER-PLAYER MINI CHARTS ----------
+    // Build 4-column grid: columns = players, rows = 4 chart types
+    let ppHtml = '';
+    players.forEach((p, pi) => {
+        const color = PLAYER_COLORS[pi % PLAYER_COLORS.length];
+        ppHtml += `<div class="player-col">
+            <div class="player-name" style="background:${color}22;border:1px solid ${color};">${p.username}</div>`;
 
-    // Compute unified Y max per chart type
-    const maxCash = Math.max(...sliced.map(s => Math.max(...(s.cash.length > 0 ? s.cash : [0]))));
-    const maxProp = Math.max(...sliced.map(s => Math.max(...(s.property.length > 0 ? s.property : [0]))));
-    const maxHouse = Math.max(...sliced.map(s => Math.max(...(s.housing.length > 0 ? s.housing : [0]))));
-    const maxCombined = Math.max(...sliced.map(s => Math.max(...(s.combined.length > 0 ? s.combined : [0]))));
-    const yMaxes = { cash: maxCash, property: maxProp, housing: maxHouse, combined: maxCombined };
+        const chartDefs = [
+            { label: 'Cash', data: sliceDataByFilter(p.cash_history), key: 'pp-cash-' + pi },
+            { label: 'Property', data: sliceDataByFilter(p.property_value_history), key: 'pp-prop-' + pi },
+            { label: 'Housing', data: sliceDataByFilter(p.housing_value_history), key: 'pp-house-' + pi },
+            { label: 'Combined', data: sliceDataByFilter(p.combined_total_history), key: 'pp-combo-' + pi }
+        ];
 
-    // Destroy old per-player chart instances
+        chartDefs.forEach(def => {
+            ppHtml += `<div class="mini-chart">
+                <div class="mini-label">${def.label}</div>
+                <div style="height:60px;"><canvas id="${def.key}"></canvas></div>
+            </div>`;
+        });
+        ppHtml += `</div>`;
+    });
+    perPlayerEl.innerHTML = ppHtml;
+
+    // Destroy old per-player chart instances (those starting with 'pp-')
     Object.keys(chartInstances).forEach(k => {
         if (k.startsWith('pp-')) {
             chartInstances[k].destroy();
@@ -611,87 +615,35 @@ function renderLiveStats() {
         }
     });
 
-    // ---------- PER-PLAYER MINI CHARTS ----------
-    let ppHtml = '';
-    sliced.forEach((s, pi) => {
-        const firstComb = s.combined.length > 0 ? s.combined[0] : 0;
-        const lastComb = s.combined.length > 0 ? s.combined[s.combined.length - 1] : 0;
-        const dc = lastComb - firstComb;
-        const pc = firstComb !== 0 ? ((dc / firstComb) * 100) : 0;
-        const sign = dc >= 0 ? '+' : '';
-        const isUp = dc >= 0;
-
-        ppHtml += `<div class="player-col">
-            <div class="player-name" style="background:${s.color}22;border:1px solid ${s.color};">${s.username}</div>
-            <div style="display:flex;gap:2px;margin-bottom:4px;">
-                <div style="flex:1;background:#161b22;border:1px solid #30363d;border-radius:4px;padding:3px;text-align:center;">
-                    <div style="font-size:7px;color:#7f8c8d;">TOTAL</div>
-                    <div style="font-size:10px;font-weight:700;color:#e67e22;">$${lastComb.toLocaleString()}</div>
-                </div>
-                <div style="flex:1;background:#161b22;border:1px solid #30363d;border-radius:4px;padding:3px;text-align:center;">
-                    <div style="font-size:7px;color:#7f8c8d;">CHG $</div>
-                    <div style="font-size:10px;font-weight:700;color:${isUp ? '#2ecc71' : '#e74c3c'};">${sign}$${dc.toLocaleString()}</div>
-                </div>
-                <div style="flex:1;background:#161b22;border:1px solid #30363d;border-radius:4px;padding:3px;text-align:center;">
-                    <div style="font-size:7px;color:#7f8c8d;">CHG %</div>
-                    <div style="font-size:10px;font-weight:700;color:${isUp ? '#2ecc71' : '#e74c3c'};">${sign}${pc.toFixed(1)}%</div>
-                </div>
-            </div>`;
-
-        [
-            { label: 'Cash', key: 'cash' },
-            { label: 'Property', key: 'property' },
-            { label: 'Housing', key: 'housing' },
-            { label: 'Combined', key: 'combined' }
-        ].forEach(def => {
-            const data = sliced[pi][def.key];
-            ppHtml += `<div class="mini-chart">
-                <div class="mini-label">${def.label}</div>
-                <div style="height:130px;"><canvas id="pp-${def.key}-${pi}"></canvas></div>
-            </div>`;
-        });
-        ppHtml += `</div>`;
-    });
-    perPlayerEl.innerHTML = ppHtml;
-
-    // Render each per-player chart with unified Y scale
-    sliced.forEach((s, pi) => {
-        [
-            { key: 'cash', yMax: yMaxes.cash },
-            { key: 'property', yMax: yMaxes.property },
-            { key: 'housing', yMax: yMaxes.housing },
-            { key: 'combined', yMax: yMaxes.combined }
-        ].forEach(def => {
-            const canvas = document.getElementById('pp-' + def.key + '-' + pi);
-            const data = s[def.key];
-            if (!canvas || !data || data.length === 0) return;
-            const id = 'pp-' + def.key + '-' + pi;
-            if (chartInstances[id]) { chartInstances[id].destroy(); delete chartInstances[id]; }
-            chartInstances[id] = new Chart(canvas.getContext('2d'), {
+    // Render each per-player mini chart
+    players.forEach((p, pi) => {
+        const charts = [
+            { data: sliceDataByFilter(p.cash_history), key: 'pp-cash-' + pi },
+            { data: sliceDataByFilter(p.property_value_history), key: 'pp-prop-' + pi },
+            { data: sliceDataByFilter(p.housing_value_history), key: 'pp-house-' + pi },
+            { data: sliceDataByFilter(p.combined_total_history), key: 'pp-combo-' + pi }
+        ];
+        charts.forEach(c => {
+            const canvas = document.getElementById(c.key);
+            if (!canvas || !c.data || c.data.length === 0) return;
+            if (chartInstances[c.key]) { chartInstances[c.key].destroy(); delete chartInstances[c.key]; }
+            chartInstances[c.key] = new Chart(canvas.getContext('2d'), {
                 type: 'line',
                 data: {
-                    labels: allLabels.slice(-data.length),
+                    labels: allLabels.slice(-c.data.length),
                     datasets: [{
-                        data: data,
-                        borderColor: s.color,
-                        backgroundColor: s.color + '20',
+                        data: c.data,
+                        borderColor: PLAYER_COLORS[pi % PLAYER_COLORS.length],
+                        backgroundColor: PLAYER_COLORS[pi % PLAYER_COLORS.length] + '20',
                         borderWidth: 1.5, tension: 0.2, pointRadius: 0, fill: true
                     }]
                 },
                 options: {
                     responsive: true, maintainAspectRatio: false, animation: false,
-                    plugins: { legend: { display: false } },
+                    plugins: { legend: { display: false }, tooltip: { enabled: true } },
                     scales: {
-                        x: {
-                            grid: { color: 'rgba(148,163,184,0.08)' },
-                            ticks: { color: '#94a3b8', maxTicksLimit: 4, font: { size: 8 } }
-                        },
-                        y: {
-                            suggestedMin: 0,
-                            suggestedMax: def.yMax * 1.15 || 100,
-                            grid: { color: 'rgba(148,163,184,0.08)' },
-                            ticks: { color: '#94a3b8', font: { size: 8 }, maxTicksLimit: 4, callback: function(v) { return '$' + v.toLocaleString(); } }
-                        }
+                        x: { display: false },
+                        y: { display: false }
                     }
                 }
             });
@@ -699,78 +651,48 @@ function renderLiveStats() {
     });
 
     // ---------- COMBINED TOTALS ----------
+    const slicedPlayers = players.map(p => ({
+        username: p.username,
+        cash: sliceDataByFilter(p.cash_history),
+        property: sliceDataByFilter(p.property_value_history),
+        housing: sliceDataByFilter(p.housing_value_history)
+    }));
+
     const combinedCharts = [
         { id: 'ct-comb-cash', label: 'Total Cash', dataKey: 'cash' },
         { id: 'ct-comb-prop', label: 'Total Property Value', dataKey: 'property' },
-        { id: 'ct-comb-house', label: 'Total Housing Value', dataKey: 'housing' },
-        { id: 'ct-comb-all', label: 'Total All (Cash+Property+Housing)', dataKey: 'all' }
+        { id: 'ct-comb-house', label: 'Total Housing Value', dataKey: 'housing' }
     ];
 
-    // Compute combined data arrays first
-    const maxCLen = Math.max(...sliced.map(s => Math.max((s.cash||[]).length, (s.property||[]).length, (s.housing||[]).length)));
-    const combinedDataMap = {};
-    combinedCharts.forEach(c => {
-        const arr = [];
-        for (let t = 0; t < maxCLen; t++) {
-            let sum = 0;
-            sliced.forEach(s => {
-                if (c.dataKey === 'all') {
-                    sum += Math.max(0, t < (s.cash||[]).length ? s.cash[t] : 0) + (t < (s.property||[]).length ? s.property[t] : 0) + (t < (s.housing||[]).length ? s.housing[t] : 0);
-                } else {
-                    const col = s[c.dataKey];
-                    if (col && t < col.length) sum += c.dataKey === 'cash' ? Math.max(0, col[t]) : col[t];
-                }
-            });
-            arr.push(sum);
-        }
-        combinedDataMap[c.id] = arr;
-    });
+    combinedEl.innerHTML = combinedCharts.map(c =>
+        `<div class="chart-card"><div class="card-title">${c.label}</div><div style="height:160px;"><canvas id="${c.id}"></canvas></div></div>`
+    ).join('');
 
-    combinedEl.innerHTML = combinedCharts.map(c => {
-        const data = combinedDataMap[c.id] || [];
-        const first = data.length > 0 ? data[0] : 0;
-        const last = data.length > 0 ? data[data.length - 1] : 0;
-        const dc = last - first;
-        const pc = first !== 0 ? ((dc / first) * 100) : 0;
-        const sign = dc >= 0 ? '+' : '';
-        const isUp = dc >= 0;
-        return `<div class="chart-card">
-            <div class="card-title">${c.label}</div>
-            <div style="display:flex;gap:4px;margin-bottom:6px;">
-                <div style="flex:1;background:#0d1117;border:1px solid #21262d;border-radius:4px;padding:4px;text-align:center;">
-                    <div style="font-size:8px;color:#7f8c8d;">CURRENT</div>
-                    <div style="font-size:12px;font-weight:700;color:#e67e22;">$${last.toLocaleString()}</div>
-                </div>
-                <div style="flex:1;background:#0d1117;border:1px solid #21262d;border-radius:4px;padding:4px;text-align:center;">
-                    <div style="font-size:8px;color:#7f8c8d;">CHG $</div>
-                    <div style="font-size:12px;font-weight:700;color:${isUp ? '#2ecc71' : '#e74c3c'};">${sign}$${dc.toLocaleString()}</div>
-                </div>
-                <div style="flex:1;background:#0d1117;border:1px solid #21262d;border-radius:4px;padding:4px;text-align:center;">
-                    <div style="font-size:8px;color:#7f8c8d;">CHG %</div>
-                    <div style="font-size:12px;font-weight:700;color:${isUp ? '#2ecc71' : '#e74c3c'};">${sign}${pc.toFixed(1)}%</div>
-                </div>
-            </div>
-            <div style="height:160px;"><canvas id="${c.id}"></canvas></div>
-        </div>`;
-    }).join('');
-
+    // Destroy old combined chart instances
     combinedCharts.forEach(c => {
         if (chartInstances[c.id]) { chartInstances[c.id].destroy(); delete chartInstances[c.id]; }
     });
 
+    const maxCLen = Math.max(...slicedPlayers.map(p => Math.max(p.cash.length, p.property.length, p.housing.length)));
+
     combinedCharts.forEach(c => {
         const canvas = document.getElementById(c.id);
         if (!canvas) return;
-        const data = combinedDataMap[c.id] || [];
-        if (data.length === 0) return;
+        const combinedData = [];
+        for (let t = 0; t < maxCLen; t++) {
+            let sum = 0;
+            slicedPlayers.forEach(p => { if (t < p[c.dataKey].length) sum += p[c.dataKey][t]; });
+            combinedData.push(sum);
+        }
+        if (combinedData.length === 0) return;
 
         chartInstances[c.id] = new Chart(canvas.getContext('2d'), {
             type: 'line',
             data: {
-                labels: allLabels.slice(-data.length),
+                labels: allLabels.slice(-combinedData.length),
                 datasets: [{
                     label: c.label,
-                    data: data,
+                    data: combinedData,
                     borderColor: '#e67e22',
                     backgroundColor: 'rgba(230,126,34,0.1)',
                     borderWidth: 2, tension: 0.3, pointRadius: 0, fill: true
@@ -827,7 +749,6 @@ function renderLiveStats() {
             }
         });
         if (data.length === 0) return;
-        const total = data.reduce((a, b) => a + b, 0);
 
         chartInstances[d.id] = new Chart(canvas.getContext('2d'), {
             type: 'doughnut',
@@ -836,15 +757,7 @@ function renderLiveStats() {
                 responsive: true, maintainAspectRatio: false, animation: false,
                 plugins: {
                     legend: { position: 'right', labels: { color: '#c9d1d9', font: { size: 9 } } },
-                    tooltip: {
-                        callbacks: {
-                            label: function(ctx) {
-                                const val = ctx.raw;
-                                const pct = total > 0 ? ((val / total) * 100).toFixed(1) : 0;
-                                return ctx.label + ': $' + val.toLocaleString() + ' (' + pct + '%)';
-                            }
-                        }
-                    }
+                    tooltip: { callbacks: { label: function(ctx) { return ctx.label + ': $' + ctx.raw.toLocaleString(); } } }
                 }
             }
         });

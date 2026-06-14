@@ -800,18 +800,20 @@ function renderLiveStats() {
     // ---------- DONUT CHARTS ----------
     const latestVals = {};
     playersAll.forEach((p, pi) => {
-        const ch = p.cash_history, pv = p.property_value_history, hv = p.housing_value_history;
+        const ch = p.cash_history, pv = p.property_value_history, hv = p.housing_value_history, ct = p.combined_total_history;
         latestVals[p.username] = {
             cash: ch && ch.length > 0 ? ch[ch.length - 1] : 0,
             property: pv && pv.length > 0 ? pv[pv.length - 1] : 0,
-            housing: hv && hv.length > 0 ? hv[hv.length - 1] : 0
+            housing: hv && hv.length > 0 ? hv[hv.length - 1] : 0,
+            combined: ct && ct.length > 0 ? ct[ct.length - 1] : 0
         };
     });
 
     const donutDefs = [
         { id: 'donut-cash', label: 'Cash Share', dataKey: 'cash' },
         { id: 'donut-prop', label: 'Property Value Share', dataKey: 'property' },
-        { id: 'donut-house', label: 'Housing Value Share', dataKey: 'housing' }
+        { id: 'donut-house', label: 'Housing Value Share', dataKey: 'housing' },
+        { id: 'donut-combined', label: 'Total All Share', dataKey: 'combined' }
     ];
 
     donutEl.innerHTML = donutDefs.map(d =>
@@ -845,7 +847,7 @@ function renderLiveStats() {
                 responsive: true, maintainAspectRatio: false, animation: false,
                 plugins: {
                     legend: { position: 'right', labels: { color: '#c9d1d9', font: { size: 9 } } },
-                    tooltip: { callbacks: { label: function(ctx) { const val = ctx.raw; const pct = total > 0 ? ((val / total) * 100).toFixed(1) : 0; return ctx.label + ': $' + val.toLocaleString() + ' (' + pct + '%)'; } } }
+                    tooltip: { callbacks: { label: function(ctx) { const val = ctx.raw; const total = ctx.dataset.data.reduce((a, b) => a + b, 0); const pct = total > 0 ? ((val / total) * 100).toFixed(1) : 0; return ctx.label + ': $' + val.toLocaleString() + ' (' + pct + '%)'; } } }
                 }
             }
         });

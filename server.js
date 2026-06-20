@@ -148,12 +148,14 @@ wss.on('connection', (ws, req) => {
                         gameState.inflationHistory.push(msg.inflation);
                         gameState.lobbyNet = msg.inflation.netWorth;
                     }
+                    if (msg.chartPlayers) gameState.chartPlayers = msg.chartPlayers;
                     gameState.lastUpdate = Date.now();
                     broadcast({
                         type: 'bankruptcy',
                         playerName: msg.playerName,
                         inflation: msg.inflation,
-                        gameTurn: gameState.gameTurn
+                        chartPlayers: gameState.chartPlayers,
+                        gameTurn: msg.gameTurn
                     });
                 }
 

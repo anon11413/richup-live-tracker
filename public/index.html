@@ -359,6 +359,7 @@ function handleMessage(msg) {
         if (msg.inflation) {
             upsertByTurn(state.inflationHistory, msg.inflation);
         }
+        if (msg.chartPlayers) state.chartPlayers = msg.chartPlayers;
         renderAll();
     }
 }
